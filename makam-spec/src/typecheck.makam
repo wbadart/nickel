@@ -43,7 +43,7 @@ typecheck (ite C T E) tdyn :-
     typecheck T _,
     typecheck E _.
 
-typecheck (eunop blame L) _ :-
+typecheck (eunop (blame _) L) _ :-
     typecheck L tlbl.
     
 typecheck (eunop isNum _) tbool.
@@ -78,12 +78,22 @@ typecheck (assume Ty L E) Ty :-
     typecheck E _.
 
 typecheck (label _) tlbl.
+typecheck (neg A) tlbl :-
+    typecheck A tlbl.
+typecheck (set _ _ _ A) tlbl :-
+    typecheck A tlbl.
+typecheck (check _ _ _ A) tlbl :-
+    typecheck A tlbl.
 
 typecheckTypes (tarrow S T) :- 
+    typecheckTypes S,
+    typecheckTypes T.
+typecheckTypes (tinter S T) :- 
     typecheckTypes S,
     typecheckTypes T.
 typecheckTypes (fromExpr E) :-
     typecheck E (tarrow tlbl (tarrow S S)).
 typecheckTypes T :- 
     not (eq T (tarrow _ _)),
+    not (eq T (tinter _ _)),
     not (eq T (fromExpr _)).

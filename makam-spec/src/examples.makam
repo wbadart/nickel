@@ -83,26 +83,26 @@ Ifte(true, Promise( Num , id 3), Promise( Bool, Assume( Bool -> Bool , id ) true
 print "Expressions can also be types!" ?
 
 print "Void type (Blame)" ?
-interpreter "
-let (void = fun l => fun t => blame l) in
+raw_interpreter "
+let (void = fun l => fun t => blame t l) in
 Assume(void, 3)
 " V T ?
 
 print "alwaysTrue (Blame)" ?
 interpreter "
-let (alwaysTrue = fun l => fun t => Ifte(t, t, blame l)) in
+let (alwaysTrue = fun l => fun t => Ifte(t, t, blame t l)) in
 Assume(alwaysTrue, false)
 " V T ?
 
 print "Return true" ?
 interpreter "
-let (alwaysTrue = fun l => fun t => Ifte(t, t, blame l)) in
+let (alwaysTrue = fun l => fun t => Ifte(t, t, blame t l)) in
 Assume(alwaysTrue, true)
 " V T ?
 
 print "Return function" ?
 interpreter "
-let (void = fun l => fun t => blame l) in
+let (void = fun l => fun t => blame t l) in
 Promise( void -> void, fun x => x) 
 " V T ?
 

@@ -16,7 +16,7 @@ ite : expr -> expr -> expr -> expr.
 
 unop : type.
 eunop : unop -> expr -> expr.
-blame : unop.
+blame : expr -> unop.
 isNum : unop.
 isBool : unop.
 isStr : unop.
@@ -34,6 +34,11 @@ assume : typ -> expr -> expr -> expr.
 
 (* Blaming *)
 label : string -> expr.
+neg : expr -> expr.
+set : bool -> bool -> bool -> expr -> expr.
+(* maybe better name, guard, but collides with Makam stuff. Maybe they're the same *)
+(* check could have two flavours, check_neg and check_pos. I think for now there's no need *)
+check : bool -> bool -> bool -> expr -> expr. 
 
 (* Variables *)
 named : string -> expr.
@@ -49,6 +54,8 @@ tbool : typ.
 tstr : typ.
 tlbl : typ.
 tarrow : typ -> typ -> typ.
+tinter : typ -> typ -> typ.
+tunion : typ -> typ -> typ.
 fromExpr : expr -> typ.
 
 (* Get the expression contract of a given type *)
@@ -56,15 +63,20 @@ typToExpr : typ -> expr -> prop.
 typToExpr tdyn (lam (bind _ (fun l => lam (bind _ 
   (fun t => t))))).
 typToExpr tnum (lam (bind _ (fun l => lam (bind _ 
-  (fun t => ite (eunop isNum t) t (eunop blame l)))))).
+  (fun t => ite (eunop isNum t) t (eunop (blame t) l)))))).
 typToExpr tbool (lam (bind _ (fun l => lam (bind _ 
-  (fun t => ite (eunop isBool t) t (eunop blame l)))))).
+  (fun t => ite (eunop isBool t) t (eunop (blame t) l)))))).
 typToExpr tstr (lam (bind _ (fun l => lam (bind _ 
-  (fun t => ite (eunop isStr t) t (eunop blame l)))))).
-typToExpr (tarrow S T) (lam (bind _ (fun l => lam (bind _ 
-  (fun t => ite (eunop isFun t) (lam (bind _ (fun x => app (app Ct l) (app t (app (app Cs l) x))))) (eunop blame l)))))) :-
+  (fun t => ite (eunop isStr t) t (eunop (blame t) l)))))).
+typToExpr (tarrow S T) (lam (bind _ (fun l => lam (bind _ (fun t => 
+  ite (eunop isFun t) (lam (bind _ (fun x => app (app Ct (check A Z  l)) (app t (app (app Cs (neg (set Z l))) x))))) (eunop (blame t) l)))))) :-
     typToExpr S Cs,
     typToExpr T Ct.
+typToExpr (tinter A B) (lam (bind _ (fun l => lam (bind _ (fun t => 
+  app (app Ca (set Z (check false X false l))) (app (app Cb (set X (check false Z false l))) t)
+))))) :-
+  typToExpr A Ca,
+  typToExpr B Cb.
 typToExpr (fromExpr E) E.
 
 (* Other *)

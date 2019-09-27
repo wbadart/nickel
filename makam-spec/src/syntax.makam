@@ -30,7 +30,7 @@ binop ->
       / (fun u => mul) { <token "*"> }
 
 unop ->
-        blame { "blame" }
+        blame { "blame" <baseexpr> }
       / isNum { "isNum" }
       / isBool { "isBool" }
       / isStr { "isStr" }
@@ -51,10 +51,10 @@ expr_ -> ite
         { "fun" <id> token_FATARROW <expr_> }
       / clet
         { "let" <def> "in" <expr_> }
+      / eunop
+        { <unop> <baseexpr> }
       / ebinop
         { <baseexpr> <binopC> <baseexpr> }
-      / eunop
-        { <unopC> <baseexpr> }
       / app
         { <baseexpr>  <expr_> }
       / { <baseexpr> }
@@ -98,6 +98,8 @@ baseTyp ->
 
 typ ->  tarrow
         { <baseTyp> "->" <typ> }
+      / tinter
+        { "/\(" <baseTyp> ","  <baseTyp> ")" }
       / { <baseTyp> }
 
 }} ).

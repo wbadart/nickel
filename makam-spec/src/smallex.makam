@@ -1,0 +1,67 @@
+print "Intersection types" ?
+
+raw_interpreter "
+Assume(/\( Num, Num), 45)
+" V T ?
+
+
+raw_interpreter "
+Assume(/\( Bool, Num), 45)
+" V T ?
+
+raw_interpreter "
+Assume(/\( Num, Num), true)
+" V T ?
+
+raw_interpreter "
+Assume(/\( (Num -> Num), (Num -> Num)), fun x => x) 43
+" V T ?
+
+
+
+raw_interpreter "
+Assume(/\( (Num -> Num), (/\( (String -> String), (Bool -> Bool) ))), fun x => x) true
+" V T ?
+
+
+raw_interpreter "
+let (alwaysFalse = fun l => fun t => Ifte(t, blame t l, t)) in
+Assume((alwaysFalse -> alwaysFalse), fun x  => x )
+" V T ?
+
+raw_interpreter "
+let (alwaysTrue = fun l => fun t => Ifte(t, t, blame t l)) in
+let (alwaysFalse = fun l => fun t => Ifte(t, blame t l, t)) in
+Assume(/\( (alwaysTrue -> alwaysFalse), (alwaysFalse -> alwaysTrue)), fun x  => Ifte(x, false, true) ) true
+" V T ?
+
+
+raw_interpreter "
+Assume(/\( (Num -> Num), (Bool -> Num)), fun x => Ifte( isNum x, x, 23)) true
+" V T ?
+
+
+
+raw_interpreter "
+let (f = Assume(/\( (Num -> Num), (Bool -> Num)), fun x => Ifte( isNum x, x, 23))) in
+let (g = Assume(/\( (Num -> Num), (Bool -> Num)), fun x => Ifte( isNum x, x, 23))) in
+(f true) + (g 2)
+" V T ?
+
+
+raw_interpreter "
+let (f = Assume(/\( (Num -> Num), (Bool -> Num)), fun x => Ifte( isNum x, x, 23))) in
+(f true) + (f 2)
+" V T ?
+
+
+print "side effects w assume" ?
+side_effect :expr.
+eval side_effect (eint 1) :- 
+    print "Side Effect!!".
+
+
+( eq E (app (assume (tinter (tarrow tnum tbool) (tarrow tnum tnum)) (label "Assume") (lam (bind "x" (fun anon3183_1 => ebinop side_effect add (anon3183_1))))) (eint 5)),
+eval E V )?
+
+

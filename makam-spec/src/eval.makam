@@ -30,7 +30,25 @@ eval (app E1 E2) V :-   (* Beta *)
 eval (eint N) (eint N).
 eval (ebool B) (ebool B).
 eval (estr S) (estr S).
+
 eval (label S) (label S).
+eval (neg (neg A)) V :-
+  eval A V.
+eval (neg A) V when not (eq A (neg _)) :-
+  eval A V',
+  eval (neg V') V.
+
+eval (set When Z With L) (neg (set When Z With V)) :-
+  eval L (neg V).
+eval (set When Z With L) (set When Z With V) :-
+  eval L V,
+  not (eq L' (neg _)).
+
+eval (check When Z To L) (neg (check When Z To V)) :-
+  eval L (neg V).
+eval (check When Z To L) (check When Z To V) :-
+  eval L V,
+  not (eq L' (neg _)).
 
 (* Operations *)
 eval (ite C T E) V :-
@@ -56,9 +74,50 @@ eval (eunop Op E) V :-
   eval E E',
   eval_unop Op E' V.
 
-eval_unop blame (label S) _ :- 
-  print `Reached a blame with label ${S}`,
+eval_unop (blame _) (label S) _ :- 
+  print `Reached a positive blame with label ${S}`,
   failure.
+eval_unop (blame _) ( neg (label S)) _ :- 
+  print `Reached a negative blame with label ${S}`,
+  failure.
+
+eval_unop (blame T) (check When Z To A) V :-
+  if or (refl.isunif When) (eq When true) then
+    if refl.isunif Z then
+      eval T V
+    else
+      (if eq Z To then 
+        eval_unop (blame T) A V 
+      else
+        eval T V)
+  else
+    eval_unop (blame T) A V. 
+eval_unop (blame T) (neg (check When Z To A)) V :-
+  if or (refl.isunif When) (eq When false) then
+    if refl.isunif Z then
+      eval T V
+    else
+      (if eq Z To then 
+        eval_unop (blame T) (neg A) V 
+      else
+        eval T V)
+  else
+    eval_unop (blame T) (neg A) V. 
+
+eval_unop (blame T) (set When Z With A) V :-
+  if or (refl.isunif When) (eq When true) then
+    eq Z With
+  else
+    eq Z Z,
+  eval_unop (blame T) A V. 
+
+eval_unop (blame T) (neg (set When Z With A)) V :-
+  if or (refl.isunif When) (eq When false) then
+    eq Z With
+  else
+    eq Z Z,
+  eval_unop (blame T) (neg A) V.
+
 
 eval_unop isNum (eint _) (ebool true).
 eval_unop isBool (ebool _) (ebool true).
