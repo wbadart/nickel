@@ -1,0 +1,40 @@
+%use "utils".
+%use "ast".
+
+(* A term is correct if:
+    - is closed,
+    - every variable is bound by it's closest binder
+    - there are no thunks
+*)
+
+
+termcheck, termcheck_ : dyn -> prop.
+
+termcheck (dyn (X: expr)) :- 
+    ifte (or (eq X (let _ _)) (or (eq X (lam _)) (or (eq X (named _)) (or (eq X (thunk _ _ _)) (eq X (recThunk _ _ _))))))
+        (termcheck_ (dyn X))
+        (structural_map0 termcheck (dyn X)).
+termcheck (dyn (X : A)) when not(typeq X (B : expr)) :-
+    structural_map0 termcheck (dyn X).
+
+
+termcheck_ (dyn (let (bind Name BodyE) (bind Name BodyT))) :-
+    (x: expr ->
+        not (generic_member (named Name) (BodyE x))),
+    (x: expr ->
+        not (generic_member (named Name) (BodyT x))),
+    (termcheck_ (dyn (named Name)) ->
+        once (termcheck (dyn (BodyE (named Name))))),
+    (termcheck_ (dyn (named Name)) ->
+        once (termcheck (dyn (BodyT (named Name))))).
+
+termcheck_ (dyn (lam (bind Name Body))) :-
+    (x: expr ->
+        not (generic_member (named Name) (Body x))),
+    (termcheck_ (dyn (named Name)) ->
+        once (termcheck (dyn (Body (named Name))))).
+
+termcheck_ (dyn (named S)) :- log_error S `TC - Found free variable ${S}`, failure.
+
+termcheck_ (dyn (thunk S _ _)) :- log_error S `TC - Found thunk`, failure. 
+termcheck_ (dyn (recThunk S _ _)) :- log_error S `TC - Found recThunk`, failure. 
