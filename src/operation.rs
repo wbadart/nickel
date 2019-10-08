@@ -1,4 +1,4 @@
-use eval::{CallStack, Closure, EvalError};
+use eval::{CallStack, Closure, Enviroment, EvalError};
 use identifier::Ident;
 use label::{solve_label, Label};
 use stack::Stack;
@@ -8,7 +8,7 @@ use term::{BinaryOp, RichTerm, Term, UnaryOp};
 
 #[derive(Debug, PartialEq)]
 pub enum OperationCont {
-    Op1(UnaryOp),
+    Op1(UnaryOp, Option<Enviroment>),
     Op2First(BinaryOp, Closure),
     Op2Second(BinaryOp, Closure),
 }
@@ -21,7 +21,7 @@ pub fn continuate_operation(
     let (cont, cs_len) = stack.pop_op_cont().expect("Condition already checked");
     call_stack.truncate(cs_len);
     match cont {
-        OperationCont::Op1(u_op) => process_unary_operation(u_op, clos, stack),
+        OperationCont::Op1(u_op, env) => process_unary_operation(u_op, env, clos, stack),
         OperationCont::Op2First(b_op, mut snd_clos) => {
             std::mem::swap(&mut clos, &mut snd_clos);
             stack.push_op_cont(OperationCont::Op2Second(b_op, snd_clos), cs_len);
@@ -35,6 +35,7 @@ pub fn continuate_operation(
 
 fn process_unary_operation(
     u_op: UnaryOp,
+    env_opt: Option<Enviroment>,
     clos: Closure,
     stack: &mut Stack,
 ) -> Result<Closure, EvalError> {
@@ -49,6 +50,9 @@ fn process_unary_operation(
                     let (fst, _) = stack.pop_arg().expect("Condition already checked.");
                     let (snd, _) = stack.pop_arg().expect("Condition already checked.");
 
+                    if !b {
+                        println!("{} => {:?}", b, snd.body);
+                    }
                     Ok(if b { fst } else { snd })
                 } else {
                     panic!("An If-Then-Else wasn't saturated")
@@ -89,10 +93,12 @@ fn process_unary_operation(
         UnaryOp::Blame(bkp_t) => {
             if let Term::Lbl(l) = *t {
                 let res = solve_label(l, true);
+                println!("{:?}", *bkp_t);
+                println!("{:?}", env.get(&Ident("t".into())));
                 match res {
                     Err(rl) => Err(EvalError::BlameError(rl, None)),
                     Ok(()) => Ok(Closure {
-                        env: env,
+                        env: env_opt.unwrap(),
                         body: *bkp_t,
                     }),
                 }
@@ -108,6 +114,30 @@ fn process_unary_operation(
                 let sb = Rc::new(RefCell::new(false));
                 let l1 = Label::Dom(Box::new(l.clone()), sb.clone());
                 let l2 = Label::Codom(Box::new(l.clone()), sb.clone());
+                // This is a tuple, just squint your eyes
+                Ok(Closure::atomic_closure(
+                    Term::Fun(
+                        Ident("f".into()),
+                        RichTerm::app(
+                            RichTerm::app(RichTerm::var("f".into()), Term::Lbl(l1).into()),
+                            Term::Lbl(l2).into(),
+                        ),
+                    )
+                    .into(),
+                ))
+            } else {
+                Err(EvalError::TypeError(format!(
+                    "Expected Label, got {:?}",
+                    *t
+                )))
+            }
+        }
+        UnaryOp::SplitBranch() => {
+            if let Term::Lbl(l) = *t {
+                let sa = Rc::new(RefCell::new(false));
+                let sb = Rc::new(RefCell::new(false));
+                let l1 = Label::Inter(Box::new(l.clone()), sa.clone(), sb.clone());
+                let l2 = Label::Inter(Box::new(l.clone()), sb.clone(), sa.clone());
                 // This is a tuple, just squint your eyes
                 Ok(Closure::atomic_closure(
                     Term::Fun(
@@ -170,7 +200,7 @@ mod tests {
 
     #[test]
     fn ite_operation() {
-        let cont = OperationCont::Op1(UnaryOp::Ite());
+        let cont = OperationCont::Op1(UnaryOp::Ite(), None);
         let mut stack = Stack::new();
         stack.push_arg(Closure::atomic_closure(Term::Num(5.0).into()), None);
         stack.push_arg(Closure::atomic_closure(Term::Num(46.0).into()), None);

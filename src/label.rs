@@ -4,8 +4,11 @@ use std::rc::Rc;
 #[derive(Debug, Clone, PartialEq)]
 pub enum Label {
     Root(RLabel),
+    // Function labels
     Dom(Box<Label>, Rc<RefCell<bool>>),
     Codom(Box<Label>, Rc<RefCell<bool>>),
+    // Intersection labels
+    Inter(Box<Label>, Rc<RefCell<bool>>, Rc<RefCell<bool>>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -31,6 +34,18 @@ pub fn solve_label(l: Label, pol: bool) -> Result<(), RLabel> {
                 Ok(())
             } else {
                 solve_label(*l, pol)
+            }
+        }
+        Label::Inter(l, sa, sb) => {
+            if pol {
+                solve_label(*l, pol)
+            } else {
+                sa.replace(true);
+                if *sb.borrow() {
+                    solve_label(*l, pol)
+                } else {
+                    Ok(())
+                }
             }
         }
     }

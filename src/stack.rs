@@ -138,7 +138,7 @@ mod tests {
     }
 
     fn some_cont() -> OperationCont {
-        OperationCont::Op1(UnaryOp::IsZero())
+        OperationCont::Op1(UnaryOp::IsZero(), None)
     }
 
     fn some_arg_marker() -> Marker {

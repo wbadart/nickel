@@ -25,6 +25,7 @@ RichTerm: RichTerm = {
 
 Operation: RichTerm = {
     <t1: SpTerm< Applicative>> <op: BOp> <t2: SpTerm<Operation>> => RichTerm::new(Term::Op2(op, t1, t2)),
+    // <op: PreBOp> <t1: SpTerm<Atom>>  <t2: SpTerm<Atom>> => RichTerm::new(Term::Op2(op, t1, t2)),
     <op: UOp> <t: SpTerm<Operation>> => RichTerm::new(Term::Op1(op, t)),
     SpTerm< Applicative>,
 };
@@ -65,16 +66,26 @@ UOp: UnaryOp = {
     "isFun" => UnaryOp::IsFun(),
     "blame[" <Term> "]" => UnaryOp::Blame(Box::new(<>)),
     "splitFun" => UnaryOp::SplitFun(),
+    "splitBranch" => UnaryOp::SplitBranch(),
 };
 
 BOp: BinaryOp = {
     "+" => BinaryOp::Plus(),
 };
 
+// PreBOp: BinaryOp = {
+//     "ExceptNeg" => BinaryOp::ExceptNeg(),
+// };
+
 Types: Types = {
-    <s: subType> "->" <t:Types> => Types::Arrow(Box::new(s), Box::new(t)),
-    <subType>,
+    <s: funType> "/\\" <t:Types> => Types::Inter(Box::new(s), Box::new(t)),
+    <funType>,
 };
+
+funType: Types = {
+    <s: subType> "->" <t:funType> => Types::Arrow(Box::new(s), Box::new(t)),
+    <subType>,
+}
 
 subType : Types = {
     "Dyn" => Types::Dyn(),

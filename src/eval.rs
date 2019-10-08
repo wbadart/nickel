@@ -5,7 +5,7 @@ use stack::Stack;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
-use term::{RichTerm, Term};
+use term::{RichTerm, Term, UnaryOp};
 
 pub type Enviroment = HashMap<Ident, (Rc<RefCell<Closure>>, IdentKind)>;
 pub type CallStack = Vec<StackElem>;
@@ -107,7 +107,11 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
             }
             // Unary Operation
             Term::Op1(op, t) => {
-                stack.push_op_cont(OperationCont::Op1(op), call_stack.len());
+                let mut env_opt = None;
+                if let UnaryOp::Blame(_) = op {
+                    env_opt = Some(env.clone());
+                }
+                stack.push_op_cont(OperationCont::Op1(op, env_opt), call_stack.len());
                 clos = Closure { body: t, env };
             }
             // Binary Operation

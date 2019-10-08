@@ -54,11 +54,13 @@ pub enum UnaryOp {
     IsFun(),
     Blame(Box<RichTerm>),
     SplitFun(),
+    SplitBranch(),
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum BinaryOp {
     Plus(),
+    // ExceptNeg(),
 }
 
 #[derive(Debug, PartialEq, Clone)]

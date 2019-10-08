@@ -190,9 +190,11 @@ impl<T: Read> Program<T> {
     fn contracts() -> String {
         "let dyn = fun l => fun t => t in
 let num = fun l => fun t => if isNum t then t else blame[ t ] l in
-let bool = fun l => fun t => if isBool t then t else blame[ t ] l in
+let bool = fun l => fun e => if isBool e then e else blame[ e ] l in
 let func = fun s => fun t => fun l => fun e => let l1l2 = splitFun l in let l1 = l1l2 (fun x => fun y => x) in let l2 = l1l2 (fun x => fun y => y) in 
-if isFun e then (fun x => t l2 (e (s l1 x))) else blame[ t ] l in
+if isFun e then (fun x => t l2 (e (s l1 x))) else blame[ e ] l in
+let inter = fun a => fun b => fun l => fun e => let l1l2 = splitBranch l in let l1 = l1l2 (fun x => fun y => x) in let l2 = l1l2 (fun x => fun y => y) in
+a l1 (b l2 e) in
 ".to_string()
     }
 }
@@ -329,6 +331,65 @@ Assume(#alwaysTrue -> #alwaysFalse, not ) true
         );
 
         assert_eq!(Ok(Term::Bool(false)), res);
+    }
+
+    #[test]
+    fn simple_intersections() {
+        let res = eval_string("Assume( Num /\\ Num, 34)");
+        assert_eq!(Ok(Term::Num(34.)), res);
+
+        let res = eval_string("Assume( Bool /\\ Bool, false)");
+        assert_eq!(Ok(Term::Bool(false)), res);
+
+        let res = eval_string("Assume( Num /\\ Bool, true)");
+        if let Ok(_) = res {
+            panic!("This expression should return an error!");
+        }
+    }
+
+    #[test]
+    fn flat_intersection() {
+        let res = eval_string(
+            "let alwaysTrue = fun l => fun t => let boolT = Assume(Bool, t) in 
+if boolT then boolT else blame[boolT] l in
+Assume(Bool /\\ #alwaysTrue, true)
+",
+        );
+        assert_eq!(Ok(Term::Bool(true)), res);
+
+        let res = eval_string(
+            "let alwaysTrue = fun l => fun t => let boolT = Assume(Bool, t) in 
+if boolT then boolT else blame[boolT] l in
+Assume(Bool /\\ #alwaysTrue, false)",
+        );
+        if let Ok(_) = res {
+            panic!("This expression should return an error!");
+        }
+    }
+
+    #[test]
+    fn higher_order_intersection() {
+        let res = eval_string(
+            "let id = Assume( Bool -> Bool /\\ Num -> Num, (fun x => x)) in
+(id 344) + (id 6) 
+",
+        );
+        assert_eq!(Ok(Term::Num(350.)), res);
+
+        let res = eval_string(
+            "let id = Assume( (Bool -> Bool) /\\ (Num -> Num), (fun x => x)) in
+if id true then 34 else id 344
+",
+        );
+        assert_eq!(Ok(Term::Num(34.)), res);
+
+        // TODO intersection should be per context of elimination
+        //         let res = eval_string(
+        //             "let id = Assume( (Bool -> Bool) /\\ (Num -> Num), (fun x => x)) in
+        // if id false then 34 else id 344
+        // ",
+        //         );
+        //         assert_eq!(Ok(Term::Num(344.)), res);
     }
 
 }
