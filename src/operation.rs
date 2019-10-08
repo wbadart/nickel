@@ -1,6 +1,9 @@
 use eval::{CallStack, Closure, EvalError};
-use label::TyPath;
+use identifier::Ident;
+use label::{solve_label, Label};
 use stack::Stack;
+use std::cell::RefCell;
+use std::rc::Rc;
 use term::{BinaryOp, RichTerm, Term, UnaryOp};
 
 #[derive(Debug, PartialEq)]
@@ -37,7 +40,7 @@ fn process_unary_operation(
 ) -> Result<Closure, EvalError> {
     let Closure {
         body: RichTerm { term: t, pos: _ },
-        env: _env,
+        env: env,
     } = clos;
     match u_op {
         UnaryOp::Ite() => {
@@ -83,9 +86,16 @@ fn process_unary_operation(
                 Ok(Closure::atomic_closure(Term::Bool(false).into()))
             }
         }
-        UnaryOp::Blame() => {
+        UnaryOp::Blame(bkp_t) => {
             if let Term::Lbl(l) = *t {
-                Err(EvalError::BlameError(l, None))
+                let res = solve_label(l, true);
+                match res {
+                    Err(rl) => Err(EvalError::BlameError(rl, None)),
+                    Ok(()) => Ok(Closure {
+                        env: env,
+                        body: *bkp_t,
+                    }),
+                }
             } else {
                 Err(EvalError::TypeError(format!(
                     "Expected Label, got {:?}",
@@ -93,44 +103,22 @@ fn process_unary_operation(
                 )))
             }
         }
-        UnaryOp::ChangePolarity() => {
-            if let Term::Lbl(mut l) = *t {
-                l.polarity = !l.polarity;
-                Ok(Closure::atomic_closure(Term::Lbl(l).into()))
-            } else {
-                Err(EvalError::TypeError(format!(
-                    "Expected Label, got {:?}",
-                    *t
-                )))
-            }
-        }
-        UnaryOp::GoDom() => {
-            if let Term::Lbl(mut l) = *t {
-                l.path = TyPath::Domain(Box::new(l.path.clone()));
-                Ok(Closure::atomic_closure(Term::Lbl(l).into()))
-            } else {
-                Err(EvalError::TypeError(format!(
-                    "Expected Label, got {:?}",
-                    *t
-                )))
-            }
-        }
-        UnaryOp::GoCodom() => {
-            if let Term::Lbl(mut l) = *t {
-                l.path = TyPath::Codomain(Box::new(l.path.clone()));
-                Ok(Closure::atomic_closure(Term::Lbl(l).into()))
-            } else {
-                Err(EvalError::TypeError(format!(
-                    "Expected Label, got {:?}",
-                    *t
-                )))
-            }
-        }
-        UnaryOp::Tag(s) => {
-            if let Term::Lbl(mut l) = *t {
-                l.tag.push_str("\n");
-                l.tag.push_str(&s);
-                Ok(Closure::atomic_closure(Term::Lbl(l).into()))
+        UnaryOp::SplitFun() => {
+            if let Term::Lbl(l) = *t {
+                let sb = Rc::new(RefCell::new(false));
+                let l1 = Label::Dom(Box::new(l.clone()), sb.clone());
+                let l2 = Label::Codom(Box::new(l.clone()), sb.clone());
+                // This is a tuple, just squint your eyes
+                Ok(Closure::atomic_closure(
+                    Term::Fun(
+                        Ident("f".into()),
+                        RichTerm::app(
+                            RichTerm::app(RichTerm::var("f".into()), Term::Lbl(l1).into()),
+                            Term::Lbl(l2).into(),
+                        ),
+                    )
+                    .into(),
+                ))
             } else {
                 Err(EvalError::TypeError(format!(
                     "Expected Label, got {:?}",

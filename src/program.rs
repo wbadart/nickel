@@ -1,6 +1,6 @@
 use eval::{eval, CallStack, EvalError, IdentKind, StackElem};
 use identifier::Ident;
-use label::{Label, TyPath};
+use label::RLabel;
 use parser;
 use std::fs;
 use std::io::{self, Read};
@@ -90,7 +90,7 @@ impl<T: Read> Program<T> {
         }
     }
 
-    fn process_blame(&mut self, l: Label, cs_opt: Option<CallStack>) -> String {
+    fn process_blame(&mut self, l: RLabel, cs_opt: Option<CallStack>) -> String {
         let mut s = String::new();
         s.push_str("Reached a blame label, some cast went terribly wrong\n");
         s.push_str("    Tag:\n");
@@ -116,9 +116,6 @@ impl<T: Read> Program<T> {
             s.push_str("    The blame is on the value (positive blame)\n");
         } else {
             s.push_str("    The blame is on the context (negative blame)\n");
-        }
-        if l.path != TyPath::Nil() {
-            s.push_str(&format!("    Path: {:?}\n", l.path));
         }
 
         if let Some(cs) = cs_opt {
@@ -192,9 +189,10 @@ impl<T: Read> Program<T> {
 
     fn contracts() -> String {
         "let dyn = fun l => fun t => t in
-let num = fun l => fun t => if isNum t then t else blame (tag[num] l) in
-let bool = fun l => fun t => if isBool t then t else blame (tag[bool] l) in
-let func = fun s => fun t => fun l => fun e => let l = tag[func] l in if isFun e then (fun x => t (goCodom l) (e (s (chngPol (goDom l)) x))) else blame l in
+let num = fun l => fun t => if isNum t then t else blame[ t ] l in
+let bool = fun l => fun t => if isBool t then t else blame[ t ] l in
+let func = fun s => fun t => fun l => fun e => let l1l2 = splitFun l in let l1 = l1l2 (fun x => fun y => x) in let l2 = l1l2 (fun x => fun y => y) in 
+if isFun e then (fun x => t l2 (e (s l1 x))) else blame[ t ] l in
 ".to_string()
     }
 }
@@ -296,10 +294,8 @@ fibo val",
     #[test]
     fn promise_fail() {
         let res = eval_string(
-            "let bool = fun l => fun t => if isBool t then t else blame l in
-
-Promise(Bool, 5)
-            ",
+            "let bool = fun l => fun t => if isBool t then t else blame[t] l in
+Promise(Bool, 5)",
         );
 
         if let Ok(_) = res {
@@ -311,7 +307,7 @@ Promise(Bool, 5)
     fn flat_contract_fail() {
         let res = eval_string(
             "let alwaysTrue = fun l => fun t => let boolT = Assume(Bool, t) in 
-    if boolT then boolT else blame l in
+    if boolT then boolT else blame[boolT] l in
 Assume(#alwaysTrue, false)
 ",
         );
@@ -324,9 +320,9 @@ Assume(#alwaysTrue, false)
     fn flat_higher_order_contract() {
         let res = eval_string(
             "let alwaysTrue = fun l => fun t => let boolT = Assume(Bool, t) in 
-    if boolT then boolT else blame l in
+    if boolT then boolT else blame[boolT] l in
 let alwaysFalse = fun l => fun t => let boolT = Assume(Bool, t) in 
-    if boolT then  blame l else boolT in
+    if boolT then  blame[boolT] l else boolT in
 let not = fun b => if b then false else true in
 Assume(#alwaysTrue -> #alwaysFalse, not ) true
 ",

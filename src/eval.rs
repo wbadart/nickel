@@ -1,5 +1,5 @@
 use identifier::Ident;
-use label::Label;
+use label::RLabel;
 use operation::{continuate_operation, OperationCont};
 use stack::Stack;
 use std::cell::RefCell;
@@ -39,7 +39,7 @@ impl Closure {
 
 #[derive(Debug, PartialEq)]
 pub enum EvalError {
-    BlameError(Label, Option<CallStack>),
+    BlameError(RLabel, Option<CallStack>),
     TypeError(String),
 }
 
@@ -192,7 +192,7 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use label::TyPath;
+    use label::Label;
     use term::UnaryOp;
 
     #[test]
@@ -212,16 +212,19 @@ mod tests {
 
     #[test]
     fn blame_panics() {
-        let label = Label {
+        let label = RLabel {
             tag: "testing".to_string(),
             l: 0,
             r: 1,
-            polarity: false,
-            path: TyPath::Nil(),
+            polarity: true,
         };
-        if let Err(EvalError::BlameError(l, _)) =
-            eval(Term::Op1(UnaryOp::Blame(), Term::Lbl(label.clone()).into()).into())
-        {
+        if let Err(EvalError::BlameError(l, _)) = eval(
+            Term::Op1(
+                UnaryOp::Blame(Box::new(Term::Num(45.).into())),
+                Term::Lbl(Label::Root(label.clone())).into(),
+            )
+            .into(),
+        ) {
             assert_eq!(l, label);
         } else {
             panic!("This evaluation should've returned a BlameError!");

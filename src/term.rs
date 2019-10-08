@@ -52,11 +52,8 @@ pub enum UnaryOp {
     IsNum(),
     IsBool(),
     IsFun(),
-    Blame(),
-    ChangePolarity(),
-    GoDom(),
-    GoCodom(),
-    Tag(String),
+    Blame(Box<RichTerm>),
+    SplitFun(),
 }
 
 #[derive(Clone, Debug, PartialEq)]
