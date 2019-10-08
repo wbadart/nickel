@@ -9,6 +9,8 @@ pub enum Label {
     Codom(Box<Label>, Rc<RefCell<bool>>),
     // Intersection labels
     Inter(Box<Label>, Rc<RefCell<bool>>, Rc<RefCell<bool>>),
+    // Guarded label (identical to Codom)
+    Guard(Box<Label>, Rc<RefCell<bool>>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -27,10 +29,12 @@ pub fn solve_label(l: Label, pol: bool) -> Result<(), RLabel> {
         }
         Label::Dom(l, sb) => {
             sb.replace(true);
+            println!("crazy domain");
             solve_label(*l, !pol)
         }
         Label::Codom(l, sb) => {
             if *sb.borrow() {
+                println!("Crazy function");
                 Ok(())
             } else {
                 solve_label(*l, pol)
@@ -46,6 +50,16 @@ pub fn solve_label(l: Label, pol: bool) -> Result<(), RLabel> {
                 } else {
                     Ok(())
                 }
+            }
+        }
+        Label::Guard(l, sb) => {
+            // Only guards negative context
+            if *sb.borrow() || pol {
+                println!("Unguarded lbl");
+                solve_label(*l, pol)
+            } else {
+                println!("Guarded lbl");
+                Ok(())
             }
         }
     }

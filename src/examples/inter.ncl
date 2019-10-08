@@ -1,2 +1,4 @@
-let id = Assume( (Bool -> Bool) /\ (Num -> Num), (fun x => x)) in
-if id false then 34 else id 344
+let prop = fun l => fun t =>  fun x => if t true then t x else blame[t] l in
+
+let id = Assume( (Num -> Bool) /\ #prop , (fun x => x)) in
+id 34

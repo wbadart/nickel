@@ -1,37 +1,42 @@
 use eval::Closure;
 use operation::OperationCont;
 use std::cell::RefCell;
-use std::rc::Weak;
+use std::rc::{Rc, Weak};
 
 #[derive(Debug)]
 pub enum Marker {
     Arg(Closure, Option<(usize, usize)>),
     Thunk(Weak<RefCell<Closure>>),
     Cont(OperationCont, usize /*callStack size*/),
+    UnGuard(Rc<RefCell<bool>>),
 }
 
 impl Marker {
     pub fn is_arg(&self) -> bool {
         match *self {
             Marker::Arg(_, _) => true,
-            Marker::Thunk(_) => false,
-            Marker::Cont(_, _) => false,
+            _ => false,
         }
     }
 
     pub fn is_thunk(&self) -> bool {
         match *self {
-            Marker::Arg(_, _) => false,
             Marker::Thunk(_) => true,
-            Marker::Cont(_, _) => false,
+            _ => false,
         }
     }
 
     pub fn is_cont(&self) -> bool {
         match *self {
-            Marker::Arg(_, _) => false,
-            Marker::Thunk(_) => false,
             Marker::Cont(_, _) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_unguard(&self) -> bool {
+        match *self {
+            Marker::UnGuard(_) => true,
+            _ => false,
         }
     }
 }
@@ -81,6 +86,10 @@ impl Stack {
         Stack::count(self, Marker::is_cont)
     }
 
+    pub fn count_unguard(&self) -> usize {
+        Stack::count(self, Marker::is_unguard)
+    }
+
     pub fn push_arg(&mut self, arg: Closure, pos: Option<(usize, usize)>) {
         self.0.push(Marker::Arg(arg, pos))
     }
@@ -91,6 +100,10 @@ impl Stack {
 
     pub fn push_op_cont(&mut self, cont: OperationCont, len: usize) {
         self.0.push(Marker::Cont(cont, len))
+    }
+
+    pub fn push_unguard(&mut self, shared: Rc<RefCell<bool>>) {
+        self.0.push(Marker::UnGuard(shared))
     }
 
     pub fn pop_arg(&mut self) -> Option<(Closure, Option<(usize, usize)>)> {
@@ -118,6 +131,17 @@ impl Stack {
     pub fn pop_op_cont(&mut self) -> Option<(OperationCont, usize)> {
         match self.0.pop() {
             Some(Marker::Cont(cont, len)) => Some((cont, len)),
+            Some(m) => {
+                self.0.push(m);
+                None
+            }
+            _ => None,
+        }
+    }
+
+    pub fn pop_unguard(&mut self) -> Option<Rc<RefCell<bool>>> {
+        match self.0.pop() {
+            Some(Marker::UnGuard(shr)) => Some(shr),
             Some(m) => {
                 self.0.push(m);
                 None

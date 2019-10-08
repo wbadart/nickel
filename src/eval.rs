@@ -143,9 +143,13 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
                     env,
                 };
             }
+            // Unguard
             // Continuate Operation
             // Update
-            _ if 0 < stack.count_thunks() || 0 < stack.count_conts() => {
+            _ if 0 < stack.count_thunks()
+                || 0 < stack.count_conts()
+                || 0 < stack.count_unguard() =>
+            {
                 clos = Closure {
                     body: term.into(),
                     env,
@@ -156,6 +160,11 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
                             *safe_thunk.borrow_mut() = clos.clone();
                         }
                     }
+                } else if 0 < stack.count_unguard() {
+                    let shr = stack.pop_unguard().unwrap();
+
+                    shr.replace(true);
+                    println!("unguarding!");
                 } else {
                     let mut cont_result = continuate_operation(clos, &mut stack, &mut call_stack);
 

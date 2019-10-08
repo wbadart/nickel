@@ -194,7 +194,7 @@ let bool = fun l => fun e => if isBool e then e else blame[ e ] l in
 let func = fun s => fun t => fun l => fun e => let l1l2 = splitFun l in let l1 = l1l2 (fun x => fun y => x) in let l2 = l1l2 (fun x => fun y => y) in 
 if isFun e then (fun x => t l2 (e (s l1 x))) else blame[ e ] l in
 let inter = fun a => fun b => fun l => fun e => let l1l2 = splitBranch l in let l1 = l1l2 (fun x => fun y => x) in let l2 = l1l2 (fun x => fun y => y) in
-a l1 (b l2 e) in
+(drop l1) (fun l1d => (drop l2) (fun l2d => a l1d (b l2d e))) in
 ".to_string()
     }
 }

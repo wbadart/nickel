@@ -50,9 +50,6 @@ fn process_unary_operation(
                     let (fst, _) = stack.pop_arg().expect("Condition already checked.");
                     let (snd, _) = stack.pop_arg().expect("Condition already checked.");
 
-                    if !b {
-                        println!("{} => {:?}", b, snd.body);
-                    }
                     Ok(if b { fst } else { snd })
                 } else {
                     panic!("An If-Then-Else wasn't saturated")
@@ -92,9 +89,8 @@ fn process_unary_operation(
         }
         UnaryOp::Blame(bkp_t) => {
             if let Term::Lbl(l) = *t {
+                println!("{:?}", l);
                 let res = solve_label(l, true);
-                println!("{:?}", *bkp_t);
-                println!("{:?}", env.get(&Ident("t".into())));
                 match res {
                     Err(rl) => Err(EvalError::BlameError(rl, None)),
                     Ok(()) => Ok(Closure {
@@ -149,6 +145,32 @@ fn process_unary_operation(
                     )
                     .into(),
                 ))
+            } else {
+                Err(EvalError::TypeError(format!(
+                    "Expected Label, got {:?}",
+                    *t
+                )))
+            }
+        }
+        UnaryOp::DropLbl() => {
+            if let Term::Lbl(l) = *t {
+                if stack.count_args() >= 1 {
+                    let (k, st) = stack.pop_arg().expect("Condition already checked.");
+
+                    let shr = Rc::new(RefCell::new(false));
+                    stack.push_unguard(shr.clone());
+                    stack.push_arg(
+                        Closure::atomic_closure(
+                            Term::Lbl(Label::Guard(Box::new(l), shr.clone())).into(),
+                        ),
+                        st,
+                    );
+
+                    println!("fromDrop --> {:?}", k.body);
+                    Ok(k)
+                } else {
+                    panic!("An Drop Lbl wasn't saturated")
+                }
             } else {
                 Err(EvalError::TypeError(format!(
                     "Expected Label, got {:?}",
