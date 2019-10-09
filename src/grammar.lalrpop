@@ -43,6 +43,7 @@ Atom: RichTerm = {
     Num => RichTerm::new(Term::Num(<>)),
     Bool => RichTerm::new(Term::Bool(<>)),
     Ident => RichTerm::new(Term::Var(<>)),
+    "Unshare(" <SpTerm<Term>> ")" => RichTerm::new(Term::Unshare(<>))
 };
 
 Pattern: Ident = {

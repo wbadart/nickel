@@ -43,8 +43,13 @@ pub enum EvalError {
     TypeError(String),
 }
 
-fn is_value(_term: &Term) -> bool {
-    false
+fn share(term: &Term) -> bool {
+    if let Term::Unshare(_) = term {
+        println!("Unsharing!");
+        false
+    } else {
+        true
+    }
 }
 
 pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
@@ -70,7 +75,7 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
             Term::Var(x) => {
                 let (thunk, id_kind) = env.remove(&x).expect(&format!("Unbound variable {:?}", x));
                 std::mem::drop(env); // thunk may be a 1RC pointer
-                if !is_value(&thunk.borrow().body.term) {
+                if share(&thunk.borrow().body.term) {
                     stack.push_thunk(Rc::downgrade(&thunk));
                 }
                 call_stack.push(StackElem::Var(id_kind, x, pos));
@@ -84,6 +89,19 @@ pub fn eval(t0: RichTerm) -> Result<Term, EvalError> {
                         clos = rc.borrow().clone();
                     }
                 }
+            }
+            // Unshare
+            Term::Unshare(t) => {
+                println!("Unshare {:?} thunks {}", t, stack.count_thunks());
+                while let Some(thunk) = stack.pop_thunk() {
+                    if let Some(safe_thunk) = Weak::upgrade(&thunk) {
+                        *safe_thunk.borrow_mut() = Closure {
+                            body: RichTerm::new_with_pos(Term::Unshare(t.clone()), pos.clone()),
+                            env: env.clone(),
+                        };
+                    }
+                }
+                clos = Closure { body: t, env };
             }
             // App
             Term::App(t1, t2) => {

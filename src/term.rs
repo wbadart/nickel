@@ -19,6 +19,8 @@ pub enum Term {
     // Typing
     Promise(Types, Label, RichTerm),
     Assume(Types, Label, RichTerm),
+    // Unshare
+    Unshare(RichTerm),
 }
 
 impl Term {
@@ -30,6 +32,7 @@ impl Term {
         match self {
             Bool(_) | Num(_) | Lbl(_) | Var(_) => {}
             Fun(_, ref mut t)
+            | Unshare(ref mut t)
             | Op1(_, ref mut t)
             | Promise(_, _, ref mut t)
             | Assume(_, _, ref mut t) => {
@@ -74,6 +77,13 @@ impl RichTerm {
         RichTerm {
             term: Box::new(t),
             pos: None,
+        }
+    }
+
+    pub fn new_with_pos(t: Term, pos: Option<(usize, usize)>) -> RichTerm {
+        RichTerm {
+            term: Box::new(t),
+            pos: pos,
         }
     }
 

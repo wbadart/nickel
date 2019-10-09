@@ -191,10 +191,11 @@ impl<T: Read> Program<T> {
         "let dyn = fun l => fun t => t in
 let num = fun l => fun t => if isNum t then t else blame[ t ] l in
 let bool = fun l => fun e => if isBool e then e else blame[ e ] l in
-let func = fun s => fun t => fun l => fun e => let l1l2 = splitFun l in let l1 = l1l2 (fun x => fun y => x) in let l2 = l1l2 (fun x => fun y => y) in 
-if isFun e then (fun x => t l2 (e (s l1 x))) else blame[ e ] l in
-let inter = fun a => fun b => fun l => fun e => let l1l2 = splitBranch l in let l1 = l1l2 (fun x => fun y => x) in let l2 = l1l2 (fun x => fun y => y) in
-(drop l1) (fun l1d => (drop l2) (fun l2d => a l1d (b l2d e))) in
+let func = fun s => fun t => fun l => fun e => Unshare(let l1l2 = splitFun l in let l1 = l1l2 (fun x => fun y => x) in let l2 = l1l2 (fun x => fun y => y) in 
+if isFun e then (fun x => t l2 (e (s l1 x))) else blame[ e ] l) in
+
+let inter = fun a => fun b => fun l => fun e => Unshare(let l1l2 = splitBranch l in let l1 = l1l2 (fun x => fun y => x) in let l2 = l1l2 (fun x => fun y => y) in
+(drop l1) (fun l1d => (drop l2) (fun l2d => a l1d (b l2d e))) ) in
 ".to_string()
     }
 }
@@ -383,13 +384,13 @@ if id true then 34 else id 344
         );
         assert_eq!(Ok(Term::Num(34.)), res);
 
-        // TODO intersection should be per context of elimination
-        //         let res = eval_string(
-        //             "let id = Assume( (Bool -> Bool) /\\ (Num -> Num), (fun x => x)) in
-        // if id false then 34 else id 344
-        // ",
-        //         );
-        //         assert_eq!(Ok(Term::Num(344.)), res);
+        // intersection should be per context of elimination
+        let res = eval_string(
+            "let id = Assume( (Bool -> Bool) /\\ (Num -> Num), (fun x => x)) in
+        if id false then 34 else id 344
+        ",
+        );
+        assert_eq!(Ok(Term::Num(344.)), res);
     }
 
 }
