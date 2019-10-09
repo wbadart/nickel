@@ -57,7 +57,8 @@ pub enum UnaryOp {
     IsFun(),
     Blame(Box<RichTerm>),
     SplitFun(),
-    SplitBranch(),
+    SplitInter(),
+    SplitUnion(),
     DropLbl(),
 }
 

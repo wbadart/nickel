@@ -7,6 +7,7 @@ pub enum Types {
     Bool(),
     Arrow(Box<Types>, Box<Types>),
     Inter(Box<Types>, Box<Types>),
+    Union(Box<Types>, Box<Types>),
     Flat(RichTerm),
 }
 
@@ -22,6 +23,10 @@ impl Types {
             ),
             Types::Inter(s, t) => RichTerm::app(
                 RichTerm::app(RichTerm::var("inter".to_string()), s.contract()),
+                t.contract(),
+            ),
+            Types::Union(s, t) => RichTerm::app(
+                RichTerm::app(RichTerm::var("union".to_string()), s.contract()),
                 t.contract(),
             ),
             Types::Flat(t) => t.clone(),

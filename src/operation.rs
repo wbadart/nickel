@@ -128,12 +128,36 @@ fn process_unary_operation(
                 )))
             }
         }
-        UnaryOp::SplitBranch() => {
+        UnaryOp::SplitInter() => {
             if let Term::Lbl(l) = *t {
                 let sa = Rc::new(RefCell::new(false));
                 let sb = Rc::new(RefCell::new(false));
                 let l1 = Label::Inter(Box::new(l.clone()), sa.clone(), sb.clone());
                 let l2 = Label::Inter(Box::new(l.clone()), sb.clone(), sa.clone());
+                // This is a tuple, just squint your eyes
+                Ok(Closure::atomic_closure(
+                    Term::Fun(
+                        Ident("f".into()),
+                        RichTerm::app(
+                            RichTerm::app(RichTerm::var("f".into()), Term::Lbl(l1).into()),
+                            Term::Lbl(l2).into(),
+                        ),
+                    )
+                    .into(),
+                ))
+            } else {
+                Err(EvalError::TypeError(format!(
+                    "Expected Label, got {:?}",
+                    *t
+                )))
+            }
+        }
+        UnaryOp::SplitUnion() => {
+            if let Term::Lbl(l) = *t {
+                let sa = Rc::new(RefCell::new(false));
+                let sb = Rc::new(RefCell::new(false));
+                let l1 = Label::Union(Box::new(l.clone()), sa.clone(), sb.clone());
+                let l2 = Label::Union(Box::new(l.clone()), sb.clone(), sa.clone());
                 // This is a tuple, just squint your eyes
                 Ok(Closure::atomic_closure(
                     Term::Fun(

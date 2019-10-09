@@ -66,7 +66,8 @@ UOp: UnaryOp = {
     "isFun" => UnaryOp::IsFun(),
     "blame[" <Term> "]" => UnaryOp::Blame(Box::new(<>)),
     "splitFun" => UnaryOp::SplitFun(),
-    "splitBranch" => UnaryOp::SplitBranch(),
+    "splitInter" => UnaryOp::SplitInter(),
+    "splitUnion" => UnaryOp::SplitUnion(),
     "drop" => UnaryOp::DropLbl(),
 };
 
@@ -76,6 +77,7 @@ BOp: BinaryOp = {
 
 Types: Types = {
     <s: funType> "/\\" <t:Types> => Types::Inter(Box::new(s), Box::new(t)),
+    <s: funType> "\\/" <t:Types> => Types::Union(Box::new(s), Box::new(t)),
     <funType>,
 };
 

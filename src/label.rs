@@ -9,6 +9,8 @@ pub enum Label {
     Codom(Box<Label>, Rc<RefCell<bool>>),
     // Intersection labels
     Inter(Box<Label>, Rc<RefCell<bool>>, Rc<RefCell<bool>>),
+    // Union labels
+    Union(Box<Label>, Rc<RefCell<bool>>, Rc<RefCell<bool>>),
     // Guarded label (identical to Codom)
     Guard(Box<Label>, Rc<RefCell<bool>>),
 }
@@ -42,6 +44,18 @@ pub fn solve_label(l: Label, pol: bool) -> Result<(), RLabel> {
         }
         Label::Inter(l, sa, sb) => {
             if pol {
+                solve_label(*l, pol)
+            } else {
+                sa.replace(true);
+                if *sb.borrow() {
+                    solve_label(*l, pol)
+                } else {
+                    Ok(())
+                }
+            }
+        }
+        Label::Union(l, sa, sb) => {
+            if !pol {
                 solve_label(*l, pol)
             } else {
                 sa.replace(true);
