@@ -1,6 +1,8 @@
 %use "init".
 %use "row".
 
+(* verbose_run_tests. *)
+
 (* This file defines a bunch of tests across many features
  * of the Makam implementation of the Nickel language.
  *
@@ -464,7 +466,8 @@ testcase nickel :-
     raw_interpreter
     "switch (`ble) {bli => 0, ble => 1, blo => 34}"
     (eint 1)
-    tnum.
+    T,
+    eqv' T tnum.
 
 testcase nickel :-
     not(raw_interpreter
@@ -487,3 +490,69 @@ This is why ocaml has upper/lower bounds
 p_typecheck
 "fun x => (switch x {bla => 2, ble => 1}) + (switch x {bla => 3})" (`bla) ?
 *)
+
+(* Switch *)
+
+testcase nickel :-
+    p_typecheck
+        "Promise(Num, switch (`bla) {bla => 3, ble => 2, blo => 1})"
+        tnum.
+
+(* Switch type *)
+
+testcase nickel :-
+    isocast
+    "Promise(tswitch (`bla) {ble => Bool, bla => Num}, 3)"
+    (promise (tswitch (enum_var "bla") [ (tuple "ble" tbool), (tuple "bla" tnum) ]) 
+        (eint 3)).
+
+testcase nickel :-
+    p_typecheck
+    "switch (`ble) {bla => 4, ble => 3}"
+    tnum.
+
+testcase nickel :-
+    once(p_typecheck
+    "switch (`bli) {bla => 4, ble => 3}"
+    T),
+    eq T tdyn.
+
+testcase nickel :-
+    p_typecheck
+    "switch (`ble) {bla => 4, @ => 3}"
+    tnum.
+
+testcase nickel :-
+    p_typecheck
+    "Promise(tswitch (`bla) {ble => Bool, bla => Num}, 3)"
+    (tswitch (enum_var "bla") [ (tuple "ble" tbool), (tuple "bla" tnum) ]).
+
+
+testcase nickel :-
+    not(p_typecheck
+    "Promise(tswitch (`bla) {ble => Bool, bla => Num}, true)"
+    _).
+
+testcase nickel :-
+    raw_interpreter
+    "Promise(Bool, (fun x => switch (x) {bla => false, ble => true}) `ble)"
+    (ebool true)
+    tbool.    
+
+testcase nickel :-
+    p_typecheck
+    "Promise(tswitch (`ble) { bla => Bool, ble => Num}, switch (`ble) {bla => 4, ble => 3})"
+    T,
+    eqv' T tnum.
+    
+
+testcase nickel :-
+    p_typecheck
+    "(fun x => switch (x) {bla => false, ble => true})"
+    (tarrow (tenum (extend "bla" (extend "ble" closed))) tbool).
+
+testcase nickel :-
+    p_typecheck
+    "(fun x => switch (x) {bla => false, @ => true})"
+    (tarrow (tenum (extend "bla" Y)) tbool),
+    refl.isunif Y.

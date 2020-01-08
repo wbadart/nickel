@@ -1,8 +1,10 @@
 %use "ast".
 %use "utils".
+%use "row".
 
 typecheck : expr -> typ -> prop.
 typecheckTypes : typ -> prop.
+normalize : typ -> typ -> prop.
 
 (* instantiates all the head forall *)
 instantiate : typ -> typ -> prop.
@@ -22,23 +24,28 @@ instantiate Ty Ty :-
  * that stores the type given to a particular bound variable, rather than introducing
  * new rules to the program context.
  *)
+
+(* I'd like to further experiment when and where we really need eqv'
+ * and not simply eq, since eq is much faster and less error prone.
+ * However, I'm leaving eq wherever I think an eqv' might be needed.
+ *)
 typedName : string -> typ -> expr.
 
 typecheck (typedName _ Ty) Ty'' :-
     instantiate Ty Ty',
-    eqv' Ty' Ty''.
+    eq Ty' Ty''.
 
 (* End of hack *)
 
 typecheck (let (bind Name E) (bind Name B)) T :-
     typecheck (E (typedName Name T')) T'',
-    eqv' T' T'',
+    eq T' T'',
     typecheck (B (typedName Name T')) T''',
-    eqv' T T'''.
+    eq T T'''.
     
 typecheck (lam (bind Name B)) (tarrow S T) :-
     typecheck (B (typedName Name S)) T',
-    eqv' T T'.
+    eq T T'.
 
 typecheck (app A B) T :-
     typecheck A (tarrow S T),
@@ -79,7 +86,7 @@ typecheck (static_access E S) T :-
 typecheck (static_access E S) T :-
     typecheck E (clos_rec L),
     find L S (T', _),
-    eqv' T' T.
+    eq T' T.
 
 typecheck (dyn_access E _) T :-
     typecheck E (open_rec T _).
@@ -103,8 +110,8 @@ typecheck (ite C T E) Ty :-
     typecheck C tbool,
     typecheck T Ty',
     typecheck E Ty'',
-    eqv' Ty Ty',
-    eqv' Ty Ty''.
+    eq Ty Ty',
+    eq Ty Ty''.
 
 typecheck (eunop blame L) _ :-
     typecheck L tlbl.
@@ -179,8 +186,39 @@ typecheckTypes_ (dyn B) :-
 without_eqv_refl' (_: typ).
 
 (* This unifies their definitions by expanding them *)
-eqv' (T: typ) S when or (not(refl.isunif T)) (not(refl.isunif S)):-
+eqv' (T': typ) S' when not(refl.isunif T'):-
+    normalize T' T,
+    normalize S' S,
     structural_map (pfun (dyn A) (dyn B) => eqv' A B) (dyn T) (dyn S).
+eqv' (T': typ) S' when not(refl.isunif S'):-
+    normalize S' S,
+    normalize T' T,
+    structural_map (pfun (dyn (A: ATY)) (dyn (B: BTY)) => eqv' A B) (dyn S) (dyn T).
+
 
 eqv' (T: typ) S when refl.isunif T, refl.isunif S :-
-    eq S T.
+    guardmany [S, T] (eqv' S T).
+
+normalize_, normalizer : dyn -> dyn -> prop.
+
+normalize A B :-
+    normalize_ (dyn A) (dyn B).
+
+normalize_ (dyn A) B when refl.isunif A :-
+    eq (dyn A) B.
+
+normalize_ (dyn A) (dyn B) when not(refl.isunif A) :-
+    guardmany [A, B] (unless (normalizer (dyn A) (dyn B)) (structural_map normalize_ (dyn A) (dyn B))).
+
+normalizer (dyn (tswitch E L)) (dyn Ty) :-
+    eval E (enum_var S),
+    find L S (Ty', _),
+    normalize Ty' Ty.
+
+normalizer (dyn (tswitch _ L)) (dyn Ty) :-
+    map (pfun (Tag, TagTy) => eq TagTy Ty) L.
+
+
+normalize (tswitch (enum_var "bla") [ (tuple "bla" tnum), (tuple "ble" tbool), (tuple "blo" tstr) ]) T ?
+
+normalize (tswitch (eint 3) [ (tuple "bla" tbool), (tuple "ble" tbool), (tuple "blo" tbool) ]) T ?
