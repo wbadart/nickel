@@ -409,10 +409,10 @@ testcase nickel :-
     row.member A 2, not(row.add 3 A), row.add 2 A.
 
 testcase nickel :-
-    row.fromList [1,2 ,3] R, row.close R, row.fromList [1,2] RR, eqv RR R.
+    row.fromList [1,2 ,3] R, row.close R, row.fromList [1,2] RR, eqv' RR R.
 
 testcase nickel :-
-    row.fromList [1,2 ,3] R, row.fromList [1,2] RR, row.close RR, not(eqv RR R).
+    row.fromList [1,2 ,3] R, row.fromList [1,2] RR, row.close RR, not(eqv' RR R).
 
 
 (* Enums *)
@@ -447,7 +447,7 @@ testcase nickel :-
     isocast
         "Assume(<bla>, 2)"
         (assume (tenum R) _ (eint 2)),
-    row.fromList ["bla"] R', row.close R', eqv R R'.
+    row.fromList ["bla"] R', row.close R', eqv' R R'.
 
 testcase nickel :-
     raw_interpreter
@@ -475,7 +475,7 @@ testcase nickel :-
     p_typecheck
     "`ble"
     (tenum R),
-    row.fromList ["ble"] R', eqv R R'.
+    row.fromList ["ble"] R', eqv' R R'.
 
 testcase nickel :-
     p_typecheck 

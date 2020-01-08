@@ -1,3 +1,5 @@
+%use "utils".
+
 row : type -> type.
 
 (* A row is like a set, but extendable on the back,
@@ -27,14 +29,14 @@ close R :-
 
 lacks : A -> row A -> prop.
 lacks A R :-
-    forall (pfun X => not (eqv X A)) R.
+    forall (pfun X => not (eqv' X A)) R.
 
 (* Notice that member and add are not the same *)
 member : row A -> A -> prop.
 member R A :-
   not (empty R),
   eq (extend A' R') R,
-  unless (eqv A A') (member R' A).
+  unless (eqv' A A') (member R' A).
 
 add : A -> row A -> prop.
 add A R :-
@@ -46,7 +48,7 @@ add A R :-
 add A R :-
     not (empty R),
     eq (extend A' R') R,
-    not (eqv A A'),
+    not (eqv' A A'),
     add A R'.
 
 remove : A -> row A -> row A -> prop.
@@ -54,7 +56,7 @@ remove A R R' :-
     member R A,
     not (empty R),
     eq (extend A' R'') R,
-    ifte (eqv A A')
+    ifte (eqv' A A')
         (eq R' R'')
         (and (remove A R'' R''') (eq R' (extend A' R'''))).
 
@@ -75,21 +77,21 @@ toList (extend A R) (A :: TL) :-
 
 %end.
 
-(* This disables the builtin eqv relation for rows *)
-without_eqv_refl (_: row A).
+(* This disables the builtin eqv' relation for rows *)
+without_eqv_refl' (X: row A).
 
 (* This unifies their definitions by expanding them *)
-eqv (R: row A) S :-
+eqv' (R: row B) S :-
     row.empty R, row.empty S, eq R S.
-eqv (R: row A) S :-
-    row.empty R, not (row.empty S), eqv S R.
-eqv (R: row A) S :-
+eqv' (R: row B) S :-
+    row.empty R, not (row.empty S), eqv' S R.
+eqv' (R: row B) S :-
     not (row.empty R),
     eq R closed,
     eq S closed.
-eqv (R: row B) S :-
+eqv' (R: row B) S :-
     not (row.empty R),
     eq (extend A R') R,
     row.add A S, (* If S doesnt have A and it's closed, this line fails *)
     row.remove A S S',
-    eqv R' S'.
+    eqv' R' S'.

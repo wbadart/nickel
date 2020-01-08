@@ -17,6 +17,7 @@ rec_field : syntax rec_field.
 rec_field_typ : syntax (tuple string typ).
 
 switch_def : syntax (tuple string expr).
+tswitch_def : syntax (tuple string typ).
 
 exprvar : concrete.namespace expr.
 typvar : concrete.namespace typ.
@@ -105,6 +106,8 @@ rec_field ->
 
 switch_def -> tuple
             { <makam.ident> "=>" <baseexpr>}
+tswitch_def -> tuple
+            { <makam.ident> "=>" <baseTyp>}
 
 id -> concrete.name exprvar
         { <makam.ident> }
@@ -115,6 +118,8 @@ idTy -> concrete.name typvar
 
 typ -> (fun idT => fun body => forall (concrete.bindone idT body))
         { "forall" <idTy> "." <typ> }
+      / tswitch
+        { "tswitch" <baseexpr> "{" <list_sep (token ",") tswitch_def> "}"}
       / tarrow
         { <baseTyp> "->" <typ> }
       / { <baseTyp> }

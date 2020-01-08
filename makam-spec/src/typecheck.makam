@@ -26,24 +26,24 @@ typedName : string -> typ -> expr.
 
 typecheck (typedName _ Ty) Ty'' :-
     instantiate Ty Ty',
-    eqv Ty' Ty''.
+    eqv' Ty' Ty''.
 
 (* End of hack *)
 
 typecheck (let (bind Name E) (bind Name B)) T :-
     typecheck (E (typedName Name T')) T'',
-    eqv T' T'',
+    eqv' T' T'',
     typecheck (B (typedName Name T')) T''',
-    eqv T T'''.
+    eqv' T T'''.
     
 typecheck (lam (bind Name B)) (tarrow S T) :-
     typecheck (B (typedName Name S)) T',
-    eqv T T'.
+    eqv' T T'.
 
 typecheck (app A B) T :-
     typecheck A (tarrow S T),
     typecheck B S',
-    eqv S S'.
+    eqv' S S'.
 
 typecheck (eint _) tnum.
 typecheck (ebool _) tbool.
@@ -79,7 +79,7 @@ typecheck (static_access E S) T :-
 typecheck (static_access E S) T :-
     typecheck E (clos_rec L),
     find L S (T', _),
-    eqv T' T.
+    eqv' T' T.
 
 typecheck (dyn_access E _) T :-
     typecheck E (open_rec T _).
@@ -97,14 +97,14 @@ typecheck (enum_case E L D) Ty :-
         (typecheck DEx Ty)
         (row.close R),
     typecheck E (tenum RE),
-    eqv RE R.
+    eqv' RE R.
 
 typecheck (ite C T E) Ty :-
     typecheck C tbool,
     typecheck T Ty',
     typecheck E Ty'',
-    eqv Ty Ty',
-    eqv Ty Ty''.
+    eqv' Ty Ty',
+    eqv' Ty Ty''.
 
 typecheck (eunop blame L) _ :-
     typecheck L tlbl.
@@ -135,7 +135,7 @@ typecheck (promise Ty E) Ty :-
     not (eq Ty (forall _)),
     typecheckTypes Ty,
     typecheck E Ty',
-    eqv Ty' Ty.
+    eqv' Ty' Ty.
 typecheck (promise Ty E) _ :-
     typecheckTypes Ty,
     not (typecheck E Ty),
@@ -175,12 +175,12 @@ typecheckTypes_ (dyn B) :-
     not (typeq B (X: typ)),
     structural_map0 typecheckTypes_ (dyn B).
 
-(* This disables the builtin eqv relation for typs *)
-without_eqv_refl (_: typ).
+(* This disables the builtin eqv' relation for typs *)
+without_eqv_refl' (_: typ).
 
 (* This unifies their definitions by expanding them *)
-eqv (T: typ) S when or (not(refl.isunif T)) (not(refl.isunif S)):-
-    structural_map (pfun (dyn A) (dyn B) => eqv A B) (dyn T) (dyn S).
+eqv' (T: typ) S when or (not(refl.isunif T)) (not(refl.isunif S)):-
+    structural_map (pfun (dyn A) (dyn B) => eqv' A B) (dyn T) (dyn S).
 
-eqv (T: typ) S when refl.isunif T, refl.isunif S :-
+eqv' (T: typ) S when refl.isunif T, refl.isunif S :-
     eq S T.

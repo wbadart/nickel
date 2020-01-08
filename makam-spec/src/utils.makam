@@ -5,6 +5,23 @@ map0 : (A -> prop) -> list A -> prop.
 map0 P nil.
 map0 P (cons HD TL) <- P HD, map0 P TL.
 
+(* I think there's a bug with the implementation of eqv,
+ * see https://github.com/astampoulis/makam/issues/71
+ * This is a quick fix, but not ideal, since we may be missing
+ * on some explicit implementations of eqv. So it's only to have
+ * something working.
+ *)
+
+eqv' : [A]A -> A -> prop.
+
+(* the refl rule can be disabled on a per-type basis *)
+without_eqv_refl' : [A]A -> prop.
+eqv' (X : A) Y when not(without_eqv_refl' (Z : A)) :- eq X Y.
+
+restrictLength : int -> list A -> prop.
+restrictLength 0 [].
+restrictLength N (HD :: TL) :- lessthan N 1 false, plus N' 1 N, restrictLength N' TL.
+
 (* TODO: For some reason I can't make the stdlib structural work.
 I tried finding the error, but I couldn't, copying this implementation
 solves the problem for now, but eventually it would make sense to do it with th builtin one.

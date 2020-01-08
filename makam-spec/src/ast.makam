@@ -80,6 +80,7 @@ tbool : typ.
 tstr : typ.
 
 tarrow : typ -> typ -> typ.
+tswitch : expr -> list (tuple string typ) -> typ.
 forall : (bindone typ typ) -> typ.
 
 tlbl : typ.
