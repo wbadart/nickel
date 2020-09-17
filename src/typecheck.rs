@@ -24,13 +24,20 @@ use crate::identifier::Ident;
 use crate::program::ImportResolver;
 use crate::term::{BinaryOp, RichTerm, StrChunk, Term, UnaryOp};
 use crate::types::{AbsType, Types};
+use crate::error::TypecheckError;
 use std::collections::{HashMap, HashSet};
+
+#[derive(Debug, PartialEq)]
+enum UnificationError {
+    RowMismatch(),
+
+}
 
 /// Typecheck a term.
 ///
 /// Return the inferred type in case of success. This is just a wrapper that calls
 /// [`type_check_`](fn.type_check_.html) with a fresh unification variable as goal.
-pub fn type_check<R>(t: &Term, resolver: &mut R) -> Result<Types, String>
+pub fn type_check<R>(t: &RichTerm, resolver: &mut R) -> Result<Types, TypecheckError>
 where
     R: ImportResolver,
 {
@@ -47,7 +54,7 @@ where
         false,
     )?;
 
-    Ok(to_type(&state, ty)?)
+    Ok(to_type(&state, ty))
 }
 
 /// Typecheck a term against a specific type.
@@ -66,14 +73,15 @@ fn type_check_<R>(
     state: &mut GTypes,
     constr: &mut GConstr,
     resolver: &mut R,
-    t: &Term,
+    rt: &RichTerm,
     ty: TypeWrapper,
     strict: bool,
-) -> Result<(), String>
+) -> Result<(), TypecheckError>
 where
     R: ImportResolver,
 {
-    match t {
+    let RichTerm { term: t, pos } = rt;
+    match t.as_ref() {
         Term::Bool(_) => unify(
             state,
             constr,
@@ -104,7 +112,7 @@ where
                 strict,
             )?;
 
-            chunks.iter().try_for_each(|chunk| -> Result<(), String> {
+            chunks.iter().try_for_each(|chunk| -> Result<(), TypecheckError> {
                 match chunk {
                     StrChunk::Literal(_) => Ok(()),
                     StrChunk::Expr(t) => type_check_(
@@ -112,7 +120,7 @@ where
                         state,
                         constr,
                         resolver,
-                        t.as_ref(),
+                        t,
                         TypeWrapper::Concrete(AbsType::Dyn()),
                         strict,
                     ),
@@ -136,7 +144,7 @@ where
                 state,
                 constr,
                 resolver,
-                rt.as_ref(),
+                rt,
                 trg,
                 strict,
             )
@@ -150,13 +158,13 @@ where
                 strict,
             )?;
 
-            terms.iter().try_for_each(|t| -> Result<(), String> {
+            terms.iter().try_for_each(|t| -> Result<(), TypecheckError> {
                 type_check_(
                     typed_vars.clone(),
                     state,
                     constr,
                     resolver,
-                    t.as_ref(),
+                    t,
                     TypeWrapper::Concrete(AbsType::Dyn()),
                     false,
                 )
@@ -172,12 +180,10 @@ where
                 strict,
             )
         }
-        Term::Let(x, re, rt) => {
-            let e = re.as_ref();
-
+        Term::Let(x, e, t) => {
             // If the right hand side has a Promise or Assume, we use it as a
             // type annotation otherwise, x gets type Dyn
-            let exp = match e {
+            let exp = match e.as_ref() {
                 Term::Assume(ty, _, _) | Term::Promise(ty, _, _) => to_typewrapper(ty.clone()),
                 _ => TypeWrapper::Concrete(AbsType::Dyn()),
             };
@@ -194,9 +200,9 @@ where
 
             // TODO move this up once lets are rec
             typed_vars.insert(x.clone(), exp);
-            type_check_(typed_vars, state, constr, resolver, rt.as_ref(), ty, strict)
+            type_check_(typed_vars, state, constr, resolver, t, ty, strict)
         }
-        Term::App(re, rt) => {
+        Term::App(e, t) => {
             let src = TypeWrapper::Ptr(new_var(state));
             let arr = TypeWrapper::Concrete(AbsType::arrow(Box::new(src.clone()), Box::new(ty)));
 
@@ -208,7 +214,7 @@ where
                 state,
                 constr,
                 resolver,
-                re.as_ref(),
+                e,
                 arr,
                 strict,
             )?;
@@ -217,7 +223,7 @@ where
                 state,
                 constr,
                 resolver,
-                rt.as_ref(),
+                t,
                 src,
                 strict,
             )
@@ -225,9 +231,9 @@ where
         Term::Var(x) => {
             let x_ty = typed_vars
                 .get(&x)
-                .ok_or_else(|| format!("Found an unbound var {:?}", x))?;
+                .ok_or_else(|| TypecheckError::UnboundIdentifier(x.clone(), pos.clone()))?;
 
-            let instantiated = instantiate_foralls_with(state, x_ty.clone(), TypeWrapper::Ptr)?;
+            let instantiated = instantiate_foralls_with(state, x_ty.clone(), TypeWrapper::Ptr);
             unify(state, constr, ty, instantiated, strict)
         }
         Term::Enum(id) => {
@@ -247,7 +253,7 @@ where
         }
         Term::Record(stat_map) => {
             let root_ty = if let TypeWrapper::Ptr(p) = ty {
-                get_root(state, p)?
+                get_root(state, p)
             } else {
                 ty.clone()
             };
@@ -256,14 +262,14 @@ where
                 // Checking for an dynamic record
                 stat_map
                     .into_iter()
-                    .try_for_each(|e| -> Result<(), String> {
+                    .try_for_each(|e| -> Result<(), TypecheckError> {
                         let (_, t) = e;
                         type_check_(
                             typed_vars.clone(),
                             state,
                             constr,
                             resolver,
-                            t.as_ref(),
+                            t,
                             (*rec_ty).clone(),
                             strict,
                         )
@@ -272,7 +278,7 @@ where
                 // inferring static record
                 let row = stat_map.into_iter().try_fold(
                     TypeWrapper::Concrete(AbsType::RowEmpty()),
-                    |acc, e| -> Result<TypeWrapper, String> {
+                    |acc, e| -> Result<TypeWrapper, TypecheckError> {
                         let (id, t) = e;
 
                         let ty = TypeWrapper::Ptr(new_var(state));
@@ -281,7 +287,7 @@ where
                             state,
                             constr,
                             resolver,
-                            t.as_ref(),
+                            t,
                             ty.clone(),
                             strict,
                         )?;
@@ -305,7 +311,7 @@ where
                 )
             }
         }
-        Term::Op1(op, rt) => {
+        Term::Op1(op, t) => {
             let ty_op = get_uop_type(typed_vars.clone(), state, constr, resolver, op, strict)?;
 
             let src = TypeWrapper::Ptr(new_var(state));
@@ -317,12 +323,12 @@ where
                 state,
                 constr,
                 resolver,
-                rt.as_ref(),
+                t,
                 src,
                 strict,
             )
         }
-        Term::Op2(op, re, rt) => {
+        Term::Op2(op, e, t) => {
             let ty_op = get_bop_type(typed_vars.clone(), state, constr, resolver, op, strict)?;
 
             let src1 = TypeWrapper::Ptr(new_var(state));
@@ -341,7 +347,7 @@ where
                 state,
                 constr,
                 resolver,
-                re.as_ref(),
+                e,
                 src1,
                 strict,
             )?;
@@ -350,15 +356,15 @@ where
                 state,
                 constr,
                 resolver,
-                rt.as_ref(),
+                t,
                 src2,
                 strict,
             )
         }
-        Term::Promise(ty2, _, rt) => {
+        Term::Promise(ty2, _, t) => {
             let tyw2 = to_typewrapper(ty2.clone());
 
-            let instantiated = instantiate_foralls_with(state, tyw2, TypeWrapper::Constant)?;
+            let instantiated = instantiate_foralls_with(state, tyw2, TypeWrapper::Constant);
 
             unify(
                 state,
@@ -372,12 +378,12 @@ where
                 state,
                 constr,
                 resolver,
-                rt.as_ref(),
+                t,
                 instantiated,
                 true,
             )
         }
-        Term::Assume(ty2, _, rt) => {
+        Term::Assume(ty2, _, t) => {
             unify(
                 state,
                 constr,
@@ -391,7 +397,7 @@ where
                 state,
                 constr,
                 resolver,
-                rt.as_ref(),
+                t,
                 new_ty,
                 false,
             )
@@ -403,11 +409,11 @@ where
             TypeWrapper::Concrete(AbsType::Sym()),
             strict,
         ),
-        Term::Wrapped(_, rt)
-        | Term::DefaultValue(rt)
-        | Term::ContractWithDefault(_, _, rt)
-        | Term::Docstring(_, rt) => {
-            type_check_(typed_vars, state, constr, resolver, rt.as_ref(), ty, strict)
+        Term::Wrapped(_, t)
+        | Term::DefaultValue(t)
+        | Term::ContractWithDefault(_, _, t)
+        | Term::Docstring(_, t) => {
+            type_check_(typed_vars, state, constr, resolver, t, ty, strict)
         }
         Term::Contract(_, _) => Ok(()),
         Term::Import(_) => unify(
@@ -421,7 +427,7 @@ where
             let t = resolver
                 .get(file_id.clone())
                 .expect("Internal error: resolved import not found ({:?}) during typechecking.");
-            type_check(t.term.as_ref(), resolver).map(|_ty| ())
+            type_check(&t, resolver).map(|_ty| ())
         }
     }
 }
@@ -502,14 +508,12 @@ fn row_add(
     id: Ident,
     ty: Option<Box<TypeWrapper>>,
     mut r: TypeWrapper,
-) -> Result<(Option<Box<TypeWrapper>>, TypeWrapper), String> {
+) -> Result<(Option<Box<TypeWrapper>>, TypeWrapper), UnificationError> {
     if let TypeWrapper::Ptr(p) = r {
-        r = get_root(state, p)?;
+        r = get_root(state, p);
     }
     match r {
-        TypeWrapper::Concrete(AbsType::RowEmpty()) => {
-            Err("The row didn't have the id and it wasn't open".to_string())
-        }
+        TypeWrapper::Concrete(AbsType::RowEmpty()) => Err(UnificationError::RowMismatch()),
         TypeWrapper::Concrete(AbsType::RowExtend(id2, ty2, r2)) => {
             if id == id2 {
                 Ok((ty2, *r2))
@@ -554,16 +558,16 @@ pub fn unify(
     mut t1: TypeWrapper,
     mut t2: TypeWrapper,
     strict: bool,
-) -> Result<(), String> {
+) -> Result<(), TypecheckError> {
     if !strict {
         // TODO think whether this makes sense, without this we can't write the Y combinator
         return Ok(());
     }
     if let TypeWrapper::Ptr(pt1) = t1 {
-        t1 = get_root(state, pt1)?;
+        t1 = get_root(state, pt1);
     }
     if let TypeWrapper::Ptr(pt2) = t2 {
-        t2 = get_root(state, pt2)?;
+        t2 = get_root(state, pt2);
     }
 
     // t1 and t2 are roots of the type
@@ -658,18 +662,18 @@ fn to_typewrapper(t: Types) -> TypeWrapper {
 }
 
 /// Extract the concrete type (if any) corresponding to a type wrapper.
-fn to_type(state: &GTypes, ty: TypeWrapper) -> Result<Types, String> {
-    Ok(match ty {
-        TypeWrapper::Ptr(p) => match get_root(state, p)? {
-            t @ TypeWrapper::Concrete(_) => to_type(state, t)?,
+fn to_type(state: &GTypes, ty: TypeWrapper) -> Types {
+    match ty {
+        TypeWrapper::Ptr(p) => match get_root(state, p) {
+            t @ TypeWrapper::Concrete(_) => to_type(state, t),
             _ => Types(AbsType::Dyn()),
         },
         TypeWrapper::Constant(_) => Types(AbsType::Dyn()),
         TypeWrapper::Concrete(t) => {
-            let mapped = t.map(|btyp| Box::new(to_type(state, *btyp).unwrap()));
+            let mapped = t.map(|btyp| Box::new(to_type(state, *btyp)));
             Types(mapped)
         }
-    })
+    }
 }
 
 /// Instantiate the type variables which are quantified in head position with type constants.
@@ -683,19 +687,20 @@ fn instantiate_foralls_with<F>(
     state: &mut GTypes,
     mut ty: TypeWrapper,
     f: F,
-) -> Result<TypeWrapper, String>
+) -> TypeWrapper
 where
     F: Fn(usize) -> TypeWrapper,
 {
     if let TypeWrapper::Ptr(p) = ty {
-        ty = get_root(state, p)?;
+        ty = get_root(state, p);
     }
 
     while let TypeWrapper::Concrete(AbsType::Forall(id, forall_ty)) = ty {
         let var = f(new_var(state));
         ty = forall_ty.subst(id, var);
     }
-    Ok(ty)
+
+    ty
 }
 
 /// Type of unary operations.
@@ -706,7 +711,7 @@ pub fn get_uop_type<R>(
     resolver: &mut R,
     op: &UnaryOp<RichTerm>,
     strict: bool,
-) -> Result<TypeWrapper, String>
+) -> Result<TypeWrapper, TypecheckError>
 where
     R: ImportResolver,
 {
@@ -786,7 +791,7 @@ where
                     state,
                     constr,
                     resolver,
-                    exp.as_ref(),
+                    exp,
                     res.clone(),
                     strict,
                 )?;
@@ -799,7 +804,7 @@ where
                         state,
                         constr,
                         resolver,
-                        e.as_ref(),
+                        e,
                         res.clone(),
                         strict,
                     )?;
@@ -807,7 +812,7 @@ where
                 }
                 None => l.iter().try_fold(
                     TypeWrapper::Concrete(AbsType::RowEmpty()),
-                    |acc, x| -> Result<TypeWrapper, String> {
+                    |acc, x| -> Result<TypeWrapper, TypecheckError> {
                         constraint(state, constr, acc.clone(), x.0.clone())?;
                         Ok(TypeWrapper::Concrete(AbsType::RowExtend(
                             x.0.clone(),
@@ -876,7 +881,7 @@ where
                 state,
                 constr,
                 resolver,
-                f.as_ref(),
+                f,
                 f_type,
                 strict,
             )?;
@@ -927,7 +932,7 @@ pub fn get_bop_type<R>(
     resolver: &mut R,
     op: &BinaryOp<RichTerm>,
     strict: bool,
-) -> Result<TypeWrapper, String>
+) -> Result<TypeWrapper, TypecheckError>
 where
     R: ImportResolver,
 {
@@ -991,7 +996,7 @@ where
                 state,
                 constr,
                 resolver,
-                t.as_ref(),
+                t,
                 res.clone(),
                 strict,
             )?;
@@ -1103,11 +1108,10 @@ fn constraint(
     constr: &mut GConstr,
     x: TypeWrapper,
     id: Ident,
-) -> Result<(), String> {
+) -> Result<(), TypecheckError> {
     match x {
         TypeWrapper::Ptr(p) => {
-            let ty = get_root(state, p)?;
-            match ty {
+            match get_root(state, p) {
                 ty @ TypeWrapper::Concrete(_) => constraint(state, constr, ty, id),
                 TypeWrapper::Ptr(root) => {
                     if let Some(v) = constr.get_mut(&root) {
@@ -1137,16 +1141,15 @@ fn constraint(
 ///
 /// This corresponds to the find in union-find.
 // TODO This should be a union find like algorithm
-pub fn get_root(state: &GTypes, x: usize) -> Result<TypeWrapper, String> {
+pub fn get_root(state: &GTypes, x: usize) -> TypeWrapper {
     match state
         .get(&x)
-        .ok_or_else(|| format!("Unbound type variable {}!", x))?
-    {
-        None => Ok(TypeWrapper::Ptr(x)),
-        Some(TypeWrapper::Ptr(y)) => get_root(state, *y),
-        Some(ty @ TypeWrapper::Concrete(_)) => Ok(ty.clone()),
-        Some(k @ TypeWrapper::Constant(_)) => Ok(k.clone()),
-    }
+        .unwrap() {
+            None => TypeWrapper::Ptr(x),
+            Some(TypeWrapper::Ptr(y)) => get_root(state, *y),
+            Some(ty @ TypeWrapper::Concrete(_)) => ty.clone(),
+            Some(k @ TypeWrapper::Constant(_)) => k.clone(),
+        }
 }
 
 #[cfg(test)]
@@ -1161,37 +1164,36 @@ mod tests {
 
     use crate::parser;
 
-    fn type_check_no_import(t: &Term) -> Result<Types, String> {
-        type_check(t, &mut DummyResolver {})
+    fn type_check_no_import(rt: &RichTerm) -> Result<Types, TypecheckError> {
+        type_check(rt, &mut DummyResolver {})
     }
 
-    fn parse_and_typecheck(s: &str) -> Result<Types, String> {
+    fn parse_and_typecheck(s: &str) -> Result<Types, TypecheckError> {
         let id = Files::new().add("<test>", s);
 
         if let Ok(p) = parser::grammar::TermParser::new().parse(id, lexer::Lexer::new(&s)) {
-            type_check_no_import(p.as_ref())
+            type_check_no_import(&p)
         } else {
             panic!("Couldn't parse {}", s)
         }
     }
 
     #[test]
-    fn simple_no_promises() -> Result<(), String> {
+    fn simple_no_promises() -> Result<(), TypecheckError> {
         // It's easy to check these will never fail, that's why we keep them all together
 
-        type_check_no_import(&Term::Bool(true))?;
-        type_check_no_import(&Term::Num(45.))?;
-
-        type_check_no_import(&Term::Fun(Ident("x".into()), RichTerm::var("x".into())))?;
-        type_check_no_import(&Term::Let(
-            Ident("x".into()),
+        type_check_no_import(&Term::Bool(true).into())?;
+        type_check_no_import(&Term::Num(45.).into())?;
+        type_check_no_import(&RichTerm::fun(String::from("x"), RichTerm::var("x".into())).into())?;
+        type_check_no_import(&RichTerm::let_in(
+            "x",
             Term::Num(3.).into(),
             RichTerm::var("x".into()),
         ))?;
 
-        type_check_no_import(&Term::App(Term::Num(5.).into(), Term::Bool(true).into()))?;
+        type_check_no_import(&RichTerm::app(Term::Num(5.).into(), Term::Bool(true).into()))?;
         type_check_no_import(
-            RichTerm::plus(Term::Num(4.).into(), Term::Bool(false).into()).as_ref(),
+            &RichTerm::plus(Term::Num(4.).into(), Term::Bool(false).into()),
         )?;
 
         Ok(())
@@ -1199,7 +1201,7 @@ mod tests {
 
     #[test]
     fn unbound_variable_always_throws() {
-        type_check_no_import(&Term::Var(Ident("x".into()))).unwrap_err();
+        type_check_no_import(&RichTerm::var(String::from("x"))).unwrap_err();
     }
 
     #[test]
@@ -1208,26 +1210,26 @@ mod tests {
             Types(AbsType::Bool()),
             Label::dummy(),
             Term::Bool(true).into(),
-        ))
+        ).into())
         .unwrap();
         type_check_no_import(&Term::Promise(
             Types(AbsType::Num()),
             Label::dummy(),
             Term::Bool(true).into(),
-        ))
+        ).into())
         .unwrap_err();
 
         type_check_no_import(&Term::Promise(
             Types(AbsType::Num()),
             Label::dummy(),
             Term::Num(34.5).into(),
-        ))
+        ).into())
         .unwrap();
         type_check_no_import(&Term::Promise(
             Types(AbsType::Bool()),
             Label::dummy(),
             Term::Num(34.5).into(),
-        ))
+        ).into())
         .unwrap_err();
 
         type_check_no_import(&Term::Promise(
@@ -1239,7 +1241,7 @@ mod tests {
                 Term::Bool(true).into(),
             )
             .into(),
-        ))
+        ).into())
         .unwrap();
         type_check_no_import(&Term::Promise(
             Types(AbsType::Num()),
@@ -1250,7 +1252,7 @@ mod tests {
                 Term::Num(34.).into(),
             )
             .into(),
-        ))
+        ).into())
         .unwrap_err();
 
         parse_and_typecheck("Promise(Str, \"hello\")").unwrap();
@@ -1579,13 +1581,13 @@ mod tests {
         };
 
         type_check(
-            mk_import("good", &mut resolver).unwrap().as_ref(),
+            &mk_import("good", &mut resolver).unwrap(),
             &mut resolver,
         )
         .unwrap();
 
         type_check(
-            mk_import("proxy", &mut resolver).unwrap().as_ref(),
+            &mk_import("proxy", &mut resolver).unwrap(),
             &mut resolver,
         )
         .unwrap_err();

@@ -18,6 +18,7 @@ use std::fmt::Write;
 #[derive(Debug, PartialEq)]
 pub enum Error {
     EvalError(EvalError),
+    TypecheckError(TypecheckError),
     ParseError(ParseError),
     ImportError(ImportError),
 }
@@ -67,6 +68,16 @@ pub enum EvalError {
     InternalError(String, Option<RawSpan>),
     /// Errors occurring rarely enough to not deserve a dedicated variant.
     Other(String, Option<RawSpan>),
+}
+
+/// An error occurring during the static typechecking phase.
+#[derive(Debug, PartialEq)]
+pub enum TypecheckError {
+    /// An unbound identifier was referenced.
+    UnboundIdentifier(Ident, Option<RawSpan>),
+    /// An unbound type variable was referenced.
+    UnboundTypeVariable(Ident, Option<RawSpan>),
+    TypeMismatch(),
 }
 
 /// An error occurring during parsing.
@@ -383,6 +394,7 @@ impl ToDiagnostic<FileId> for Error {
     fn to_diagnostic(&self, files: &mut Files<String>) -> Diagnostic<FileId> {
         match self {
             Error::ParseError(err) => err.to_diagnostic(files),
+            Error::TypecheckError(err) => err.to_diagnostic(files),
             Error::EvalError(err) => err.to_diagnostic(files),
             Error::ImportError(err) => err.to_diagnostic(files),
         }
@@ -571,6 +583,16 @@ impl ToDiagnostic<FileId> for ParseError {
             ParseError::InvalidEscapeSequence(span) => Diagnostic::error()
                 .with_message("Invalid escape sequence")
                 .with_labels(vec![primary(span)]),
+        }
+    }
+}
+
+impl ToDiagnostic<FileId> for TypecheckError {
+    fn to_diagnostic(&self, files: &mut Files<String>) -> Diagnostic<FileId> {
+        match self {
+            TypecheckError::TypeMismatch() =>
+                Diagnostic::error()
+                    .with_message("Type error")
         }
     }
 }
