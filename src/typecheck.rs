@@ -20,11 +20,11 @@
 //! of a let binding is currently never inferred (let alone generalized): it must be annotated via
 //! a `Promise` or an `Assume`, or it is given the type `Dyn`, no matter what is the typechecking
 //! mode.
+use crate::error::TypecheckError;
 use crate::identifier::Ident;
 use crate::program::ImportResolver;
 use crate::term::{BinaryOp, RichTerm, StrChunk, Term, UnaryOp};
 use crate::types::{AbsType, Types};
-use crate::error::TypecheckError;
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, PartialEq)]
@@ -45,7 +45,11 @@ pub struct State<'a> {
 }
 
 impl<'a> State<'a> {
-    pub fn new(resolver: &'a mut dyn ImportResolver, table: &'a mut GTypes, constr: &'a mut GConstr) -> Self {
+    pub fn new(
+        resolver: &'a mut dyn ImportResolver,
+        table: &'a mut GTypes,
+        constr: &'a mut GConstr,
+    ) -> Self {
         State {
             resolver,
             table,
@@ -58,8 +62,10 @@ impl<'a> State<'a> {
 ///
 /// Return the inferred type in case of success. This is just a wrapper that calls
 /// [`type_check_`](fn.type_check_.html) with a fresh unification variable as goal.
-pub fn type_check(t: &RichTerm, resolver: &mut dyn ImportResolver) -> Result<Types, TypecheckError>
-{
+pub fn type_check(
+    t: &RichTerm,
+    resolver: &mut dyn ImportResolver,
+) -> Result<Types, TypecheckError> {
     let mut table = GTypes::new();
     let mut constr = GConstr::new();
     let ty = TypeWrapper::Ptr(new_var(&mut table));
@@ -91,8 +97,7 @@ fn type_check_(
     strict: bool,
     rt: &RichTerm,
     ty: TypeWrapper,
-) -> Result<(), TypecheckError>
-{
+) -> Result<(), TypecheckError> {
     let RichTerm { term: t, pos } = rt;
     match t.as_ref() {
         Term::Bool(_) => unify(
@@ -119,24 +124,26 @@ fn type_check_(
         Term::StrChunks(chunks) => {
             unify(
                 state,
-            env.clone(),
-            strict,
+                env.clone(),
+                strict,
                 ty,
                 TypeWrapper::Concrete(AbsType::Str()),
             )?;
 
-            chunks.iter().try_for_each(|chunk| -> Result<(), TypecheckError> {
-                match chunk {
-                    StrChunk::Literal(_) => Ok(()),
-                    StrChunk::Expr(t) => type_check_(
-                        state,
-            env.clone(),
-            strict,
-                        t,
-                        TypeWrapper::Concrete(AbsType::Dyn()),
-                    ),
-                }
-            })
+            chunks
+                .iter()
+                .try_for_each(|chunk| -> Result<(), TypecheckError> {
+                    match chunk {
+                        StrChunk::Literal(_) => Ok(()),
+                        StrChunk::Expr(t) => type_check_(
+                            state,
+                            env.clone(),
+                            strict,
+                            t,
+                            TypeWrapper::Concrete(AbsType::Dyn()),
+                        ),
+                    }
+                })
         }
         Term::Fun(x, rt) => {
             let src = TypeWrapper::Ptr(new_var(&mut state.table));
@@ -150,13 +157,7 @@ fn type_check_(
             unify(state, env.clone(), strict, ty, arr)?;
 
             env.insert(x.clone(), src);
-            type_check_(
-                state,
-                env,
-                strict,
-                rt,
-                trg,
-            )
+            type_check_(state, env, strict, rt, trg)
         }
         Term::List(terms) => {
             unify(
@@ -167,18 +168,20 @@ fn type_check_(
                 TypeWrapper::Concrete(AbsType::List()),
             )?;
 
-            terms.iter().try_for_each(|t| -> Result<(), TypecheckError> {
-                // Since lists elements are checked against the type `Dyn`, it does not make sense
-                // to typecheck them even in strict mode, as this will always fails, unless they
-                // are annotated with an `Assume(Dyn, ..)`, which will always succeed.
-                type_check_(
-                    state,
-                    env.clone(),
-                    false,
-                    t,
-                    TypeWrapper::Concrete(AbsType::Dyn()),
-                )
-            })
+            terms
+                .iter()
+                .try_for_each(|t| -> Result<(), TypecheckError> {
+                    // Since lists elements are checked against the type `Dyn`, it does not make sense
+                    // to typecheck them even in strict mode, as this will always fails, unless they
+                    // are annotated with an `Assume(Dyn, ..)`, which will always succeed.
+                    type_check_(
+                        state,
+                        env.clone(),
+                        false,
+                        t,
+                        TypeWrapper::Concrete(AbsType::Dyn()),
+                    )
+                })
         }
         Term::Lbl(_) => {
             // TODO implement lbl type
@@ -198,13 +201,7 @@ fn type_check_(
                 _ => TypeWrapper::Concrete(AbsType::Dyn()),
             };
 
-            type_check_(
-                state,
-                env.clone(),
-                strict,
-                e,
-                exp.clone(),
-            )?;
+            type_check_(state, env.clone(), strict, e, exp.clone())?;
 
             // TODO move this up once lets are rec
             env.insert(x.clone(), exp);
@@ -217,27 +214,16 @@ fn type_check_(
             // This order shouldn't be changed, since applying a function to a record
             // may change how it's typed (static or dynamic)
             // This is good hint a bidirectional algorithm would make sense...
-            type_check_(
-                state,
-                env.clone(),
-                strict,
-                e,
-                arr,
-            )?;
-            type_check_(
-                state,
-                env,
-                strict,
-                t,
-                src,
-            )
+            type_check_(state, env.clone(), strict, e, arr)?;
+            type_check_(state, env, strict, t, src)
         }
         Term::Var(x) => {
             let x_ty = env
                 .get(&x)
                 .ok_or_else(|| TypecheckError::UnboundIdentifier(x.clone(), pos.clone()))?;
 
-            let instantiated = instantiate_foralls_with(&mut state.table, x_ty.clone(), TypeWrapper::Ptr);
+            let instantiated =
+                instantiate_foralls_with(&mut state.table, x_ty.clone(), TypeWrapper::Ptr);
             unify(state, env, strict, ty, instantiated)
         }
         Term::Enum(id) => {
@@ -269,13 +255,7 @@ fn type_check_(
                     .into_iter()
                     .try_for_each(|e| -> Result<(), TypecheckError> {
                         let (_, t) = e;
-                        type_check_(
-                            state,
-                            env.clone(),
-                            strict,
-                            t,
-                            (*rec_ty).clone(),
-                        )
+                        type_check_(state, env.clone(), strict, t, (*rec_ty).clone())
                     })
             } else {
                 // inferring static record
@@ -285,16 +265,11 @@ fn type_check_(
                         let (id, t) = e;
 
                         let ty = TypeWrapper::Ptr(new_var(state.table));
-                        type_check_(
-                            state,
-                            env.clone(),
-                            strict,
-                            t,
-                            ty.clone(),
-                        )?;
+                        type_check_(state, env.clone(), strict, t, ty.clone())?;
 
                         //FIXME: return a proper error. Constraint failing.
-                        constraint(state, acc.clone(), id.clone()).map_err(|_| TypecheckError::Sink())?;
+                        constraint(state, acc.clone(), id.clone())
+                            .map_err(|_| TypecheckError::Sink())?;
 
                         Ok(TypeWrapper::Concrete(AbsType::RowExtend(
                             id.clone(),
@@ -320,13 +295,7 @@ fn type_check_(
             let arr = TypeWrapper::Concrete(AbsType::arrow(Box::new(src.clone()), Box::new(ty)));
 
             unify(state, env.clone(), strict, arr, ty_op)?;
-            type_check_(
-                state,
-                env.clone(),
-                strict,
-                t,
-                src,
-            )
+            type_check_(state, env.clone(), strict, t, src)
         }
         Term::Op2(op, e, t) => {
             let ty_op = get_bop_type(state, env.clone(), strict, op)?;
@@ -342,20 +311,8 @@ fn type_check_(
             ));
 
             unify(state, env.clone(), strict, arr, ty_op)?;
-            type_check_(
-                state,
-                env.clone(),
-                strict,
-                e,
-                src1,
-            )?;
-            type_check_(
-                state,
-                env,
-                strict,
-                t,
-                src2,
-            )
+            type_check_(state, env.clone(), strict, e, src1)?;
+            type_check_(state, env, strict, t, src2)
         }
         Term::Promise(ty2, _, t) => {
             let tyw2 = to_typewrapper(ty2.clone());
@@ -369,13 +326,7 @@ fn type_check_(
                 ty.clone(),
                 to_typewrapper(ty2.clone()),
             )?;
-            type_check_(
-                state,
-                env,
-                strict,
-                t,
-                instantiated,
-            )
+            type_check_(state, env, true, t, instantiated)
         }
         Term::Assume(ty2, _, t) => {
             unify(
@@ -386,13 +337,7 @@ fn type_check_(
                 to_typewrapper(ty2.clone()),
             )?;
             let new_ty = TypeWrapper::Ptr(new_var(state.table));
-            type_check_(
-                state,
-                env,
-                false,
-                t,
-                new_ty,
-            )
+            type_check_(state, env, false, t, new_ty)
         }
         Term::Sym(_) => unify(
             state,
@@ -404,9 +349,7 @@ fn type_check_(
         Term::Wrapped(_, t)
         | Term::DefaultValue(t)
         | Term::ContractWithDefault(_, _, t)
-        | Term::Docstring(_, t) => {
-            type_check_(state, env, strict, t, ty)
-        }
+        | Term::Docstring(_, t) => type_check_(state, env, strict, t, ty),
         Term::Contract(_, _) => Ok(()),
         Term::Import(_) => unify(
             state,
@@ -416,7 +359,8 @@ fn type_check_(
             TypeWrapper::Concrete(AbsType::Dyn()),
         ),
         Term::ResolvedImport(file_id) => {
-            let t = state.resolver
+            let t = state
+                .resolver
                 .get(file_id.clone())
                 .expect("Internal error: resolved import not found ({:?}) during typechecking.");
             type_check(&t, state.resolver).map(|_ty| ())
@@ -583,7 +527,8 @@ pub fn unify(
             } // Right now it only unifies equally named variables
             (AbsType::RowEmpty(), AbsType::RowEmpty()) => Ok(()),
             (AbsType::RowExtend(id, ty, t), r2 @ AbsType::RowExtend(_, _, _)) => {
-                let (ty2, r2) = row_add(state, id, ty.clone(), TypeWrapper::Concrete(r2)).map_err(|_| TypecheckError::Sink())?;
+                let (ty2, r2) = row_add(state, id, ty.clone(), TypeWrapper::Concrete(r2))
+                    .map_err(|_| TypecheckError::Sink())?;
 
                 match (ty, ty2) {
                     (None, None) => Ok(()),
@@ -596,9 +541,7 @@ pub fn unify(
             (AbsType::StaticRecord(r), AbsType::StaticRecord(r2)) => {
                 unify(state, env, strict, *r, *r2)
             }
-            (AbsType::DynRecord(t), AbsType::DynRecord(t2)) => {
-                unify(state, env, strict, *t, *t2)
-            }
+            (AbsType::DynRecord(t), AbsType::DynRecord(t2)) => unify(state, env, strict, *t, *t2),
             (AbsType::Var(ref i1), AbsType::Var(ref i2)) if i1 == i2 => Ok(()),
             (AbsType::Forall(i1, t1t), AbsType::Forall(i2, t2t)) => {
                 // Very stupid (slow) implementation
@@ -619,7 +562,9 @@ pub fn unify(
             if r1 != r2 {
                 let mut r1_constr = state.constr.remove(&r1).unwrap_or_default();
                 let mut r2_constr = state.constr.remove(&r2).unwrap_or_default();
-                state.constr.insert(r1, r1_constr.drain().chain(r2_constr.drain()).collect());
+                state
+                    .constr
+                    .insert(r1, r1_constr.drain().chain(r2_constr.drain()).collect());
 
                 state.table.insert(r1, Some(TypeWrapper::Ptr(r2)));
             }
@@ -670,11 +615,7 @@ fn to_type(table: &GTypes, ty: TypeWrapper) -> Types {
 /// typechecking `forall`s: all quantified type variables in head position are replaced by rigid
 /// type constants, and the term is then typechecked normally. As these constants cannot be unified
 /// with anything, this forces all the occurrences of a type variable to be the same type.
-fn instantiate_foralls_with<F>(
-    table: &mut GTypes,
-    mut ty: TypeWrapper,
-    f: F,
-) -> TypeWrapper
+fn instantiate_foralls_with<F>(table: &mut GTypes, mut ty: TypeWrapper, f: F) -> TypeWrapper
 where
     F: Fn(usize) -> TypeWrapper,
 {
@@ -696,8 +637,7 @@ pub fn get_uop_type(
     env: Environment,
     strict: bool,
     op: &UnaryOp<RichTerm>,
-) -> Result<TypeWrapper, TypecheckError>
-{
+) -> Result<TypeWrapper, TypecheckError> {
     Ok(match op {
         // forall a. bool -> a -> a -> a
         UnaryOp::Ite() => {
@@ -770,31 +710,20 @@ pub fn get_uop_type(
             let res = TypeWrapper::Ptr(new_var(state.table));
 
             for exp in l.values() {
-                type_check_(
-                    state,
-                    env.clone(),
-                    strict,
-                    exp,
-                    res.clone(),
-                )?;
+                type_check_(state, env.clone(), strict, exp, res.clone())?;
             }
 
             let row = match d {
                 Some(e) => {
-                    type_check_(
-                        state,
-                        env.clone(),
-                        strict,
-                        e,
-                        res.clone(),
-                    )?;
+                    type_check_(state, env.clone(), strict, e, res.clone())?;
                     TypeWrapper::Ptr(new_var(state.table))
                 }
                 None => l.iter().try_fold(
                     TypeWrapper::Concrete(AbsType::RowEmpty()),
                     |acc, x| -> Result<TypeWrapper, TypecheckError> {
                         //FIXME: proper error (constraint failed)
-                        constraint(state, acc.clone(), x.0.clone()).map_err(|_| TypecheckError::Sink())?;
+                        constraint(state, acc.clone(), x.0.clone())
+                            .map_err(|_| TypecheckError::Sink())?;
                         Ok(TypeWrapper::Concrete(AbsType::RowExtend(
                             x.0.clone(),
                             None,
@@ -857,13 +786,7 @@ pub fn get_uop_type(
                 ))),
             ));
 
-            type_check_(
-                state,
-                env.clone(),
-                strict,
-                f,
-                f_type,
-            )?;
+            type_check_(state, env.clone(), strict, f, f_type)?;
 
             TypeWrapper::Concrete(AbsType::Arrow(
                 Box::new(TypeWrapper::Concrete(AbsType::DynRecord(Box::new(a)))),
@@ -909,8 +832,7 @@ pub fn get_bop_type(
     env: Environment,
     strict: bool,
     op: &BinaryOp<RichTerm>,
-) -> Result<TypeWrapper, TypecheckError>
-{
+) -> Result<TypeWrapper, TypecheckError> {
     match op {
         // Num -> Num -> Num
         BinaryOp::Plus() => Ok(TypeWrapper::Concrete(AbsType::arrow(
@@ -966,13 +888,7 @@ pub fn get_bop_type(
         BinaryOp::DynExtend(t) => {
             let res = TypeWrapper::Ptr(new_var(state.table));
 
-            type_check_(
-                state,
-                env.clone(),
-                strict,
-                t,
-                res.clone(),
-            )?;
+            type_check_(state, env.clone(), strict, t, res.clone())?;
 
             Ok(TypeWrapper::Concrete(AbsType::arrow(
                 Box::new(TypeWrapper::Concrete(AbsType::Str())),
@@ -1076,26 +992,20 @@ fn new_var(state: &mut GTypes) -> usize {
 /// Add a row constraint on a type.
 ///
 /// See [`GConstr`](type.GConstr.html).
-fn constraint(
-    state: &mut State,
-    x: TypeWrapper,
-    id: Ident,
-) -> Result<(), RowUnifError> {
+fn constraint(state: &mut State, x: TypeWrapper, id: Ident) -> Result<(), RowUnifError> {
     match x {
-        TypeWrapper::Ptr(p) => {
-            match get_root(state.table, p) {
-                ty @ TypeWrapper::Concrete(_) => constraint(state, ty, id),
-                TypeWrapper::Ptr(root) => {
-                    if let Some(v) = state.constr.get_mut(&root) {
-                        v.insert(id);
-                    } else {
-                        state.constr.insert(root, vec![id].into_iter().collect());
-                    }
-                    Ok(())
+        TypeWrapper::Ptr(p) => match get_root(state.table, p) {
+            ty @ TypeWrapper::Concrete(_) => constraint(state, ty, id),
+            TypeWrapper::Ptr(root) => {
+                if let Some(v) = state.constr.get_mut(&root) {
+                    v.insert(id);
+                } else {
+                    state.constr.insert(root, vec![id].into_iter().collect());
                 }
-                c @ TypeWrapper::Constant(_) => Err(RowUnifError::IllformedRow(c)),
+                Ok(())
             }
-        }
+            c @ TypeWrapper::Constant(_) => Err(RowUnifError::IllformedRow(c)),
+        },
         TypeWrapper::Concrete(AbsType::RowEmpty()) => Ok(()),
         TypeWrapper::Concrete(AbsType::RowExtend(id2, _, t)) => {
             if id2 == id {
@@ -1114,14 +1024,12 @@ fn constraint(
 /// This corresponds to the find in union-find.
 // TODO This should be a union find like algorithm
 pub fn get_root(table: &GTypes, x: usize) -> TypeWrapper {
-    match table
-        .get(&x)
-        .unwrap() {
-            None => TypeWrapper::Ptr(x),
-            Some(TypeWrapper::Ptr(y)) => get_root(table, *y),
-            Some(ty @ TypeWrapper::Concrete(_)) => ty.clone(),
-            Some(k @ TypeWrapper::Constant(_)) => k.clone(),
-        }
+    match table.get(&x).unwrap() {
+        None => TypeWrapper::Ptr(x),
+        Some(TypeWrapper::Ptr(y)) => get_root(table, *y),
+        Some(ty @ TypeWrapper::Concrete(_)) => ty.clone(),
+        Some(k @ TypeWrapper::Constant(_)) => k.clone(),
+    }
 }
 
 #[cfg(test)]
@@ -1163,10 +1071,14 @@ mod tests {
             RichTerm::var("x".into()),
         ))?;
 
-        type_check_no_import(&RichTerm::app(Term::Num(5.).into(), Term::Bool(true).into()))?;
-        type_check_no_import(
-            &RichTerm::plus(Term::Num(4.).into(), Term::Bool(false).into()),
-        )?;
+        type_check_no_import(&RichTerm::app(
+            Term::Num(5.).into(),
+            Term::Bool(true).into(),
+        ))?;
+        type_check_no_import(&RichTerm::plus(
+            Term::Num(4.).into(),
+            Term::Bool(false).into(),
+        ))?;
 
         Ok(())
     }
@@ -1178,53 +1090,71 @@ mod tests {
 
     #[test]
     fn promise_simple_checks() {
-        type_check_no_import(&Term::Promise(
-            Types(AbsType::Bool()),
-            Label::dummy(),
-            Term::Bool(true).into(),
-        ).into())
+        type_check_no_import(
+            &Term::Promise(
+                Types(AbsType::Bool()),
+                Label::dummy(),
+                Term::Bool(true).into(),
+            )
+            .into(),
+        )
         .unwrap();
-        type_check_no_import(&Term::Promise(
-            Types(AbsType::Num()),
-            Label::dummy(),
-            Term::Bool(true).into(),
-        ).into())
-        .unwrap_err();
-
-        type_check_no_import(&Term::Promise(
-            Types(AbsType::Num()),
-            Label::dummy(),
-            Term::Num(34.5).into(),
-        ).into())
-        .unwrap();
-        type_check_no_import(&Term::Promise(
-            Types(AbsType::Bool()),
-            Label::dummy(),
-            Term::Num(34.5).into(),
-        ).into())
-        .unwrap_err();
-
-        type_check_no_import(&Term::Promise(
-            Types(AbsType::Num()),
-            Label::dummy(),
-            Term::Assume(
+        type_check_no_import(
+            &Term::Promise(
                 Types(AbsType::Num()),
                 Label::dummy(),
                 Term::Bool(true).into(),
             )
             .into(),
-        ).into())
-        .unwrap();
-        type_check_no_import(&Term::Promise(
-            Types(AbsType::Num()),
-            Label::dummy(),
-            Term::Assume(
-                Types(AbsType::Bool()),
+        )
+        .unwrap_err();
+
+        type_check_no_import(
+            &Term::Promise(
+                Types(AbsType::Num()),
                 Label::dummy(),
-                Term::Num(34.).into(),
+                Term::Num(34.5).into(),
             )
             .into(),
-        ).into())
+        )
+        .unwrap();
+        type_check_no_import(
+            &Term::Promise(
+                Types(AbsType::Bool()),
+                Label::dummy(),
+                Term::Num(34.5).into(),
+            )
+            .into(),
+        )
+        .unwrap_err();
+
+        type_check_no_import(
+            &Term::Promise(
+                Types(AbsType::Num()),
+                Label::dummy(),
+                Term::Assume(
+                    Types(AbsType::Num()),
+                    Label::dummy(),
+                    Term::Bool(true).into(),
+                )
+                .into(),
+            )
+            .into(),
+        )
+        .unwrap();
+        type_check_no_import(
+            &Term::Promise(
+                Types(AbsType::Num()),
+                Label::dummy(),
+                Term::Assume(
+                    Types(AbsType::Bool()),
+                    Label::dummy(),
+                    Term::Num(34.).into(),
+                )
+                .into(),
+            )
+            .into(),
+        )
         .unwrap_err();
 
         parse_and_typecheck("Promise(Str, \"hello\")").unwrap();
@@ -1552,16 +1482,8 @@ mod tests {
             )
         };
 
-        type_check(
-            &mk_import("good", &mut resolver).unwrap(),
-            &mut resolver,
-        )
-        .unwrap();
+        type_check(&mk_import("good", &mut resolver).unwrap(), &mut resolver).unwrap();
 
-        type_check(
-            &mk_import("proxy", &mut resolver).unwrap(),
-            &mut resolver,
-        )
-        .unwrap_err();
+        type_check(&mk_import("proxy", &mut resolver).unwrap(), &mut resolver).unwrap_err();
     }
 }
