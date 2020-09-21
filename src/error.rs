@@ -10,6 +10,7 @@ use crate::parser::lexer::LexicalError;
 use crate::parser::utils::mk_span;
 use crate::position::RawSpan;
 use crate::term::RichTerm;
+use crate::types::Types;
 use codespan::{FileId, Files};
 use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 use std::fmt::Write;
@@ -78,6 +79,7 @@ pub enum TypecheckError {
     /// An unbound type variable was referenced.
     UnboundTypeVariable(Ident, Option<RawSpan>),
     TypeMismatch(),
+    Sink(),
 }
 
 /// An error occurring during parsing.
@@ -126,6 +128,12 @@ impl From<EvalError> for Error {
 impl From<ParseError> for Error {
     fn from(error: ParseError) -> Error {
         Error::ParseError(error)
+    }
+}
+
+impl From<TypecheckError> for Error {
+    fn from(error: TypecheckError) -> Error {
+        Error::TypecheckError(error)
     }
 }
 
@@ -590,9 +598,7 @@ impl ToDiagnostic<FileId> for ParseError {
 impl ToDiagnostic<FileId> for TypecheckError {
     fn to_diagnostic(&self, files: &mut Files<String>) -> Diagnostic<FileId> {
         match self {
-            TypecheckError::TypeMismatch() =>
-                Diagnostic::error()
-                    .with_message("Type error")
+            _ => Diagnostic::error().with_message("Typechecking failed [WIP]."),
         }
     }
 }

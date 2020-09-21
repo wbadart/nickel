@@ -199,7 +199,7 @@ impl Program {
             .parse_with_cache(self.main_id)
             .map_err(|e| Error::from(e))?;
         let t = transformations::transform(t, self).map_err(|err| Error::ImportError(err))?;
-        println!("Typechecked: {:?}", type_check(t.as_ref(), self));
+        type_check(&t, self).map_err(|err| Error::from(err))?;
         eval::eval(t, self.mk_global_env()?, self).map_err(|e| e.into())
     }
 
