@@ -10,7 +10,6 @@ use crate::parser::lexer::LexicalError;
 use crate::parser::utils::mk_span;
 use crate::position::RawSpan;
 use crate::term::RichTerm;
-use crate::types::Types;
 use codespan::{FileId, Files};
 use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 use std::fmt::Write;
@@ -596,7 +595,7 @@ impl ToDiagnostic<FileId> for ParseError {
 }
 
 impl ToDiagnostic<FileId> for TypecheckError {
-    fn to_diagnostic(&self, files: &mut Files<String>) -> Diagnostic<FileId> {
+    fn to_diagnostic(&self, _files: &mut Files<String>) -> Diagnostic<FileId> {
         match self {
             _ => Diagnostic::error().with_message("Typechecking failed [WIP]."),
         }

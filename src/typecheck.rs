@@ -556,7 +556,7 @@ pub fn unify(
                 )
             }
             //FIXME: proper error (general type mismatch)
-            (a, b) => Err(TypecheckError::TypeMismatch()),
+            (_a, _b) => Err(TypecheckError::TypeMismatch()),
         },
         (TypeWrapper::Ptr(r1), TypeWrapper::Ptr(r2)) => {
             if r1 != r2 {
@@ -580,7 +580,7 @@ pub fn unify(
         }
         (TypeWrapper::Constant(i1), TypeWrapper::Constant(i2)) if i1 == i2 => Ok(()),
         //FIXME: proper error (general type mismatch)
-        (a, b) => Err(TypecheckError::TypeMismatch()),
+        (_a, _b) => Err(TypecheckError::TypeMismatch()),
     }
 }
 
@@ -691,7 +691,6 @@ pub fn get_uop_type(
             let row = TypeWrapper::Ptr(new_var(state.table));
             //FIXME: proper error (constraint failed)
             constraint(state, row.clone(), id.clone()).map_err(|_| TypecheckError::Sink())?;
-
             TypeWrapper::Concrete(AbsType::Arrow(
                 Box::new(TypeWrapper::Concrete(AbsType::Enum(Box::new(row.clone())))),
                 Box::new(TypeWrapper::Concrete(AbsType::Enum(Box::new(
