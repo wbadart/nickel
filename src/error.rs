@@ -10,6 +10,7 @@ use crate::parser::lexer::LexicalError;
 use crate::parser::utils::mk_span;
 use crate::position::RawSpan;
 use crate::term::RichTerm;
+use crate::types::Types;
 use codespan::{FileId, Files};
 use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 use std::fmt::Write;
@@ -75,9 +76,20 @@ pub enum EvalError {
 pub enum TypecheckError {
     /// An unbound identifier was referenced.
     UnboundIdentifier(Ident, Option<RawSpan>),
+    /// A ill-formed type, such as non-row type appearing in a row.
+    IllformedType(Types),
+    MissingField(),
     /// An unbound type variable was referenced.
     UnboundTypeVariable(Ident, Option<RawSpan>),
-    TypeMismatch(),
+    TypeMismatch(
+        /* expected */ Types,
+        /* actual/inferred/annotated */ Types,
+        /* position*/ Option<RawSpan>),
+    RowMismatch(
+        Ident,
+        /* expected */ Option<Types>,
+        /* actual/inferred/annotated */ Option<Types>,
+        /* position*/ Option<RawSpan>),
     Sink(),
 }
 
