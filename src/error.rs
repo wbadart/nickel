@@ -84,12 +84,14 @@ pub enum TypecheckError {
     TypeMismatch(
         /* expected */ Types,
         /* actual/inferred/annotated */ Types,
-        /* position*/ Option<RawSpan>),
+        /* position*/ Option<RawSpan>,
+    ),
     RowMismatch(
         Ident,
         /* expected */ Option<Types>,
         /* actual/inferred/annotated */ Option<Types>,
-        /* position*/ Option<RawSpan>),
+        /* position*/ Option<RawSpan>,
+    ),
     Sink(),
 }
 
