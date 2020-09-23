@@ -76,9 +76,9 @@ pub enum EvalError {
 pub enum TypecheckError {
     /// An unbound identifier was referenced.
     UnboundIdentifier(Ident, Option<RawSpan>),
-    /// A ill-formed type, such as non-row type appearing in a row.
+    /// An ill-formed type, such as non-row type appearing in a row.
     IllformedType(Types),
-    MissingField(),
+    MissingRow(Ident, Types, Types, Option<RawSpan>),
     /// An unbound type variable was referenced.
     UnboundTypeVariable(Ident, Option<RawSpan>),
     TypeMismatch(
@@ -92,7 +92,13 @@ pub enum TypecheckError {
         /* actual/inferred/annotated */ Option<Types>,
         /* position*/ Option<RawSpan>,
     ),
-    Sink(),
+    RowConflict(
+        Ident,
+        Option<Types>,
+        Types,
+        Types,
+        Option<RawSpan>,
+    )
 }
 
 /// An error occurring during parsing.
