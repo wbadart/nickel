@@ -32,17 +32,16 @@ use std::collections::{HashMap, HashSet};
 pub enum RowUnifError {
     MissingRow(Ident),
     IllformedRow(TypeWrapper),
-    IncompatibleConstraints(Ident, TypeWrapper),
+    IncompatibleConstraints(Ident, Option<TypeWrapper>),
 }
 
 impl RowUnifError {
-    pub fn to_typecheck_err(self, table: &GTypes, pos_opt: &Option<RawSpan>, left: TypeWrapper, right: TypeWrapper) -> TypecheckError {
-        let pos_opt = pos_opt.as_ref().cloned();
+    pub fn to_unif_err(self, left: TypeWrapper, right: TypeWrapper) -> UnifError {
         match self {
-            RowUnifError::MissingRow(id) => TypecheckError::MissingRow(id, to_type(table, left), to_type(table, right), pos_opt),
-            RowUnifError::IllformedRow(tyw) => TypecheckError::IllformedType(to_type(table, tyw)),
+            RowUnifError::MissingRow(id) => UnifError::MissingRow(id, left, right),
+            RowUnifError::IllformedRow(tyw) => UnifError::IllformedRow(tyw),
             RowUnifError::IncompatibleConstraints(id, tyw) => {
-                TypecheckError::RowConflict(id, to_type(table, left), to_type(table, right), to_type(table, tyw))
+                UnifError::RowConflict(id, tyw, left, right)
             }
         }
     }
@@ -53,6 +52,9 @@ pub enum UnifError {
     IncompatibleTypes(TypeWrapper, TypeWrapper),
     IncompatibleRows(Ident, Option<TypeWrapper>, Option<TypeWrapper>),
     IncompatibleConst(usize, usize),
+    MissingRow(Ident, TypeWrapper, TypeWrapper),
+    IllformedRow(TypeWrapper),
+    RowConflict(Ident, Option<TypeWrapper>, TypeWrapper, TypeWrapper),
     WithConst(usize, TypeWrapper),
     IllformedFlatType(RichTerm),
 }
@@ -61,11 +63,9 @@ impl UnifError {
     pub fn to_typecheck_err(self, table: &GTypes, pos_opt: &Option<RawSpan>) -> TypecheckError {
         let pos_opt = pos_opt.as_ref().cloned();
         match self {
-            UnifError::IncompatibleTypes(ty1, ty2) => TypecheckError::TypeMismatch(
-                to_type(table, ty1),
-                to_type(table, ty2),
-                pos_opt,
-            ),
+            UnifError::IncompatibleTypes(ty1, ty2) => {
+                TypecheckError::TypeMismatch(to_type(table, ty1), to_type(table, ty2), pos_opt)
+            }
             UnifError::IncompatibleRows(id, ty1, ty2) => TypecheckError::RowMismatch(
                 id,
                 ty1.map(|tw| to_type(table, tw)),
@@ -88,25 +88,20 @@ impl UnifError {
             UnifError::IllformedFlatType(rt) => {
                 TypecheckError::IllformedType(Types(AbsType::Flat(rt)))
             }
-        }
-    }
-}
-
-pub fn find_row(table: &GTypes, tyw: &TypeWrapper, id: &Ident) -> Option<Option<TypeWrapper>> {
-    match tyw {
-        TypeWrapper::Concrete(AbsType::RowExtend(id2, ty, tail)) if *id == *id2 => Some(ty.as_ref().map(|ty| *ty.clone())),
-        TypeWrapper::Concrete(AbsType::RowExtend(_, ty, tail)) => find_row(table, tail, id),
-        TypeWrapper::Ptr(p) => {
-            let p = get_root(table, *p);
-            match p {
-                tyw @ TypeWrapper::Concrete(_) => find_row(table, &tyw, id), 
-                _ => None,
+            UnifError::MissingRow(id, tyw1, tyw2) => {
+                TypecheckError::MissingRow(id, to_type(table, tyw1), to_type(table, tyw2), pos_opt)
             }
+            UnifError::IllformedRow(tyw) => TypecheckError::IllformedType(to_type(table, tyw)),
+            UnifError::RowConflict(id, tyw, left, right) => TypecheckError::RowConflict(
+                id,
+                tyw.map(|tyw| to_type(table, tyw)),
+                to_type(table, left),
+                to_type(table, right),
+                pos_opt,
+            ),
         }
-        _ => None
     }
 }
-
 
 /// The typing environment.
 type Environment = HashMap<Ident, TypeWrapper>;
@@ -529,7 +524,10 @@ fn row_add(
         TypeWrapper::Ptr(root) => {
             if let Some(set) = state.constr.get(&root) {
                 if set.contains(&id) {
-                    return Err(RowUnifError::IncompatibleConstraints(id.clone(), ty));
+                    return Err(RowUnifError::IncompatibleConstraints(
+                        id.clone(),
+                        ty.map(|tyw| *tyw),
+                    ));
                 }
             }
             let new_row = TypeWrapper::Ptr(new_var(state.table));
@@ -591,8 +589,17 @@ pub fn unify(
             }, // Right now it only unifies equally named variables
             (AbsType::RowEmpty(), AbsType::RowEmpty()) => Ok(()),
             (AbsType::RowExtend(id, ty, t), r2 @ AbsType::RowExtend(_, _, _)) => {
-                let (ty2, r2) = row_add(state, &id, ty.clone(), TypeWrapper::Concrete(r2))
-                    .map_err(|err| panic!("not implemented"))?;
+                let (ty2, r2) = row_add(state, &id, ty.clone(), TypeWrapper::Concrete(r2.clone()))
+                    .map_err(|err| {
+                        err.to_unif_err(
+                            TypeWrapper::Concrete(AbsType::RowExtend(
+                                id.clone(),
+                                ty.clone(),
+                                t.clone(),
+                            )),
+                            TypeWrapper::Concrete(r2),
+                        )
+                    })?;
 
                 match (ty, ty2) {
                     (None, None) => Ok(()),
@@ -1078,9 +1085,12 @@ fn constraint(state: &mut State, x: TypeWrapper, id: Ident) -> Result<(), RowUni
             c @ TypeWrapper::Constant(_) => Err(RowUnifError::IllformedRow(c)),
         },
         TypeWrapper::Concrete(AbsType::RowEmpty()) => Ok(()),
-        TypeWrapper::Concrete(AbsType::RowExtend(id2, _, t)) => {
+        TypeWrapper::Concrete(AbsType::RowExtend(id2, tyw, t)) => {
             if id2 == id {
-                Err(RowUnifError::IncompatibleConstraints(id))
+                Err(RowUnifError::IncompatibleConstraints(
+                    id,
+                    tyw.map(|tyw| *tyw),
+                ))
             } else {
                 constraint(state, *t, id)
             }

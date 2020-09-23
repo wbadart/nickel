@@ -92,13 +92,7 @@ pub enum TypecheckError {
         /* actual/inferred/annotated */ Option<Types>,
         /* position*/ Option<RawSpan>,
     ),
-    RowConflict(
-        Ident,
-        Option<Types>,
-        Types,
-        Types,
-        Option<RawSpan>,
-    )
+    RowConflict(Ident, Option<Types>, Types, Types, Option<RawSpan>),
 }
 
 /// An error occurring during parsing.

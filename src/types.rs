@@ -129,14 +129,6 @@ impl<Ty> AbsType<Ty> {
         }
     }
 
-    pub fn find_row(&self, id: &Ident) -> Option<Option<Ty>> {
-        match self {
-            AbsType::RowExtend(id2, ty, tail) if *id == *id2 => Some(ty),
-            AbsType::RowExtend(_, ty, tail) => tail.find_row(id),
-            _ => None
-        }
-    }
-
     pub fn arrow(s: Ty, t: Ty) -> Self {
         AbsType::Arrow(s, t)
     }
